@@ -2,7 +2,7 @@
 
 编号永不复用、条目不删；被取代的决定标「⛔ 已被 Kxx 取代」，并保留原文，方便追溯。代码注释会按编号引用这里的条目（如 K10、K19、K29）。
 
-K1–K41 承接自服务器版（Node + PostgreSQL），原文保留；其中的 `apps/…`、`lib/*.ts`、`.env` 等指服务器版的位置，本仓库对应位置见 [architecture.md](architecture.md)。K42 起为单文件版新增。技术层面的约定见 [architecture.md](architecture.md)。
+K1–K41 承接自服务器版（Node + PostgreSQL），原文保留；其中的 `apps/…`、`lib/*.ts`、`.env` 等指服务器版的位置，本仓库对应位置见 [architecture.md](architecture.md)。K42 起为单文件版新增。技术层面的约定见 [architecture.md](architecture.md) 与 [architecture-decisions/](architecture-decisions/README.md)；产品现状见 [product.md](product.md)。
 
 | # | 决定 | 理由 |
 |---|---|---|
