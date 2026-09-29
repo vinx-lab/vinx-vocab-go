@@ -1,0 +1,35 @@
+{
+  "object": {
+    "items": {
+      "array": [
+        {
+          "object": {
+            "canEdit": "boolean",
+            "createdAt": "datetime",
+            "description": "null",
+            "id": "string",
+            "isSystem": "boolean",
+            "name": "string",
+            "ownerName": "string",
+            "unitCount": "number",
+            "wordCount": "number"
+          }
+        },
+        {
+          "object": {
+            "canEdit": "boolean",
+            "createdAt": "datetime",
+            "description": "string",
+            "id": "string",
+            "isSystem": "boolean",
+            "name": "string",
+            "ownerName": "string",
+            "unitCount": "number",
+            "wordCount": "number"
+          }
+        }
+      ]
+    },
+    "total": "number"
+  }
+}

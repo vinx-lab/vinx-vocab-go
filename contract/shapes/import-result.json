@@ -1,0 +1,16 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "bookId": "string",
+        "units": "number",
+        "unitsCreated": "number",
+        "wordsCreated": "number",
+        "wordsLinked": "number",
+        "wordsReused": "number"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

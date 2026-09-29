@@ -1,0 +1,36 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "archived": "boolean",
+        "id": "string",
+        "inviteCode": "string",
+        "members": {
+          "array": [
+            {
+              "object": {
+                "email": "string",
+                "id": "string",
+                "joinedAt": "datetime",
+                "managedByMe": "boolean",
+                "name": "string"
+              }
+            }
+          ]
+        },
+        "name": "string",
+        "plans": {
+          "array": []
+        },
+        "teacher": {
+          "object": {
+            "id": "string",
+            "name": "string"
+          }
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

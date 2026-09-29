@@ -1,0 +1,28 @@
+{
+  "name": "vinx-vocab-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Vinx Vocab 前端（Vite + Preact），构建产物嵌入 Go 单文件",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "shots": "tsx scripts/shots.ts",
+    "size": "node scripts/size.mjs"
+  },
+  "dependencies": {
+    "dayjs": "1.11.23",
+    "preact": "10.29.8",
+    "preact-iso": "2.12.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "jsdom": "25.0.1",
+    "tsx": "4.23.12",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vitest": "3.2.7"
+  }
+}

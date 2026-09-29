@@ -1,0 +1,15 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "audio": "boolean",
+        "baseUrl": "string",
+        "enabled": "boolean",
+        "model": "string",
+        "provider": "string"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

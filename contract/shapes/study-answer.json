@@ -1,0 +1,13 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "correct": "boolean",
+        "expected": "string",
+        "recorded": "boolean"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

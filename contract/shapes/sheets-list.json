@@ -1,0 +1,29 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "items": {
+          "array": [
+            {
+              "object": {
+                "activeSessionId": "null",
+                "createdAt": "datetime",
+                "creatorName": "string",
+                "firstResult": "null",
+                "id": "string",
+                "seq": "number",
+                "status": "string",
+                "wordCount": "number"
+              }
+            }
+          ]
+        },
+        "limit": "number",
+        "page": "number",
+        "total": "number"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

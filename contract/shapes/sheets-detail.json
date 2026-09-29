@@ -1,0 +1,37 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "createdAt": "datetime",
+        "id": "string",
+        "modes": {
+          "array": [
+            "string"
+          ]
+        },
+        "seq": "number",
+        "student": {
+          "object": {
+            "id": "string",
+            "name": "string"
+          }
+        },
+        "words": {
+          "array": [
+            {
+              "object": {
+                "definition": "string",
+                "partOfSpeech": "null",
+                "phonetic": "null",
+                "spelling": "string",
+                "wordId": "string"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

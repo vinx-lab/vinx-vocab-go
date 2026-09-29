@@ -1,0 +1,41 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "items": {
+          "array": [
+            {
+              "object": {
+                "createdAt": "datetime",
+                "createdById": "null",
+                "currentGrade": "null",
+                "email": "string",
+                "id": "string",
+                "managedByMe": "boolean",
+                "name": "string",
+                "role": "string"
+              }
+            },
+            {
+              "object": {
+                "createdAt": "datetime",
+                "createdById": "string",
+                "currentGrade": "null",
+                "email": "string",
+                "id": "string",
+                "managedByMe": "boolean",
+                "name": "string",
+                "role": "string"
+              }
+            }
+          ]
+        },
+        "limit": "number",
+        "page": "number",
+        "total": "number"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

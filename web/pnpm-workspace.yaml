@@ -1,0 +1,3 @@
+# esbuild 自带平台二进制（可选依赖），不需要运行它的安装脚本
+allowBuilds:
+  esbuild: false

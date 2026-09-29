@@ -1,0 +1,6 @@
+{
+  "object": {
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

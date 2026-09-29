@@ -1,0 +1,19 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "canEdit": "boolean",
+        "description": "null",
+        "id": "string",
+        "isSystem": "boolean",
+        "name": "string",
+        "ownerName": "string",
+        "units": {
+          "array": []
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

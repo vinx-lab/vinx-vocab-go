@@ -1,0 +1,22 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "prompt": "string",
+        "words": {
+          "array": [
+            {
+              "object": {
+                "definition": "string",
+                "id": "string",
+                "spelling": "string"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

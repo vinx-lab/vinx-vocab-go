@@ -1,0 +1,25 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "sessions": {
+          "array": [
+            {
+              "object": {
+                "dayKey": "string",
+                "id": "string",
+                "kind": "string",
+                "planName": "string",
+                "startedAt": "datetime",
+                "status": "string",
+                "wrongCount": "number"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

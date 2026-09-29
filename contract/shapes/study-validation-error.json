@@ -1,0 +1,18 @@
+{
+  "object": {
+    "error": {
+      "object": {
+        "code": "string",
+        "details": {
+          "object": {
+            "kind": "string"
+          }
+        },
+        "message": "string",
+        "requestId": "string"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

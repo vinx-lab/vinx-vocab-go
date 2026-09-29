@@ -1,0 +1,15 @@
+/* 组件库补充样式：antd 在 JS 里算、这里改用 CSS 的部分 */
+
+/* 空状态简版插画的颜色（antd 按主题 token 计算的结果） */
+.vx-empty-shadow { fill: #f5f3ee; }
+.vx-empty-stroke { stroke: #d9d7d3; }
+.vx-empty-fill { fill: #faf8f3; }
+[data-theme="dark"] .vx-empty-shadow { fill: #2d3441; }
+[data-theme="dark"] .vx-empty-stroke { stroke: #444a55; }
+[data-theme="dark"] .vx-empty-fill { fill: #242b38; }
+
+/* 表格 scroll.y：表头吸顶（antd 用两张表实现，这里用 sticky） */
+.ant-table-fixed-header .ant-table-thead > tr > th { background: var(--ant-table-header-bg, inherit); }
+
+/* 折叠面板箭头旋转动画 */
+.ant-collapse-arrow svg { transition: transform 0.3s; }

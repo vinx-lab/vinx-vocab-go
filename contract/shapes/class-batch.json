@@ -1,0 +1,20 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "created": {
+          "array": [
+            {
+              "object": {
+                "account": "string",
+                "name": "string"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

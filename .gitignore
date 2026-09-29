@@ -1,0 +1,23 @@
+node_modules/
+/dist/
+web/dist/
+# 嵌入用的前端产物由 make build-web 生成，只有占位页入库
+/internal/web/dist/*
+!/internal/web/dist/placeholder.html
+# 运行时数据目录（Linux 默认 ./data）；内置词表 data/vocab/ 需要入库
+/data/*
+!/data/vocab/
+/vinx-data/
+*.db
+*.db-wal
+*.db-shm
+test-results/
+playwright-report/
+.superpowers/
+# go-winres 生成的 Windows 资源（make winres）
+*.syso
+# 本机私有：Makefile 的 Go 环境
+local.mk
+# 开发过程记录与截图对比（本地保留，截图可用 web/scripts/shots.ts 重新生成）
+/docs/superpowers/
+/docs/screens/

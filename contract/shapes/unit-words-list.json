@@ -1,0 +1,41 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "items": {
+          "array": [
+            {
+              "object": {
+                "definition": "string",
+                "example": "null",
+                "exampleCn": "null",
+                "exampleSource": "null",
+                "id": "string",
+                "partOfSpeech": "null",
+                "phonetic": "null",
+                "sortOrder": "number",
+                "spelling": "string",
+                "type": "string",
+                "usedByUnits": "number"
+              }
+            }
+          ]
+        },
+        "limit": "number",
+        "page": "number",
+        "total": "number",
+        "unit": {
+          "object": {
+            "bookId": "string",
+            "bookName": "string",
+            "canEdit": "boolean",
+            "id": "string",
+            "name": "string"
+          }
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

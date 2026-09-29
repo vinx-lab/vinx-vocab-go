@@ -1,0 +1,25 @@
+/** 组件库入口：用法与 antd 5 对应组件一致（见 README.md） */
+import "./antd.css";
+import "./ui.css";
+export * from "./icons";
+export { Button, type ButtonProps } from "./Button";
+export { Input, type InputProps } from "./Input";
+export { Form, FormInstance, useForm, useWatch, type Rule } from "./Form";
+export { Row, Col, Grid, useBreakpoint } from "./Grid";
+export { Card } from "./Card";
+export { Segmented } from "./Segmented";
+export { Radio } from "./Radio";
+export { Checkbox } from "./Checkbox";
+export { Switch } from "./Switch";
+export { Avatar, Tag, Spin, Empty, Result } from "./Display";
+export { Alert, Space, Divider, Typography, Timeline, Progress } from "./Feedback";
+export { List, Collapse, Steps, Tabs, Upload } from "./Data";
+export { Tooltip, Dropdown, Menu, type MenuItem } from "./Popup";
+export { Popover, Popconfirm } from "./Popconfirm";
+export { Drawer, message, modal, useApp } from "./Overlay";
+export { Modal } from "./Modal";
+export { Select, type SelectOption } from "./Select";
+export { InputNumber, DatePicker } from "./Pickers";
+export { Table, Pagination, type ColumnType } from "./Table";
+export { Layout } from "./Layout";
+export { cx } from "./util";

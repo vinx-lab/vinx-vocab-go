@@ -1,0 +1,52 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "activeByDay": {
+          "array": [
+            {
+              "object": {
+                "accuracy": "null",
+                "activeStudents": "number",
+                "answers": "number",
+                "day": "string"
+              }
+            }
+          ]
+        },
+        "class": {
+          "object": {
+            "id": "string",
+            "inviteCode": "string",
+            "memberCount": "number",
+            "name": "string"
+          }
+        },
+        "day": "string",
+        "hardWords": {
+          "array": []
+        },
+        "students": {
+          "array": []
+        },
+        "summary": {
+          "object": {
+            "accuracy7d": {
+              "object": {
+                "correct": "number",
+                "rate": "null",
+                "total": "number"
+              }
+            },
+            "doneToday": "number",
+            "inProgress": "number",
+            "noPlan": "number",
+            "notStarted": "number"
+          }
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "object": {
+    "elapsedMs": "number",
+    "id": "string",
+    "kind": "string",
+    "result": {
+      "object": {
+        "failed": {
+          "array": []
+        },
+        "items": {
+          "array": [
+            {
+              "object": {
+                "clozeReady": "boolean",
+                "example": "string",
+                "exampleCn": "string",
+                "spelling": "string",
+                "wordId": "string"
+              }
+            }
+          ]
+        },
+        "remaining": "number"
+      }
+    },
+    "status": "string"
+  }
+}

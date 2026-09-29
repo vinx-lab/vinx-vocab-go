@@ -1,0 +1,36 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "day": "string",
+        "items": {
+          "array": [
+            {
+              "object": {
+                "email": "string",
+                "learnedWords": "number",
+                "name": "string",
+                "today": {
+                  "object": {
+                    "doneToday": "boolean",
+                    "newDone": "number",
+                    "newLeft": "number",
+                    "reviewDone": "number",
+                    "reviewLeft": "number",
+                    "testResult": "null"
+                  }
+                },
+                "totalWords": "number",
+                "userId": "string"
+              }
+            }
+          ]
+        },
+        "total": "number",
+        "totalWords": "number"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

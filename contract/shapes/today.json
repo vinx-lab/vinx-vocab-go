@@ -1,0 +1,69 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "day": "string",
+        "drillAvailable": "number",
+        "learnedWords": "number",
+        "plans": {
+          "array": [
+            {
+              "object": {
+                "activeSessions": {
+                  "array": []
+                },
+                "creatorName": "string",
+                "doneToday": "boolean",
+                "dueCount": "number",
+                "kind": "string",
+                "learnedWords": "number",
+                "modes": {
+                  "array": [
+                    "string"
+                  ]
+                },
+                "name": "string",
+                "newAvailable": "number",
+                "newDoneToday": "number",
+                "newLeft": "number",
+                "newPerDay": "number",
+                "planId": "string",
+                "reviewDoneToday": "number",
+                "reviewLeft": "number",
+                "reviewPerDay": "number",
+                "source": "string",
+                "testResult": "null",
+                "testSize": "number",
+                "totalWords": "number"
+              }
+            }
+          ]
+        },
+        "sheet": "null",
+        "stats": {
+          "object": {
+            "answers": "number",
+            "minutes": "number",
+            "newLeft": "number",
+            "newWords": "number",
+            "pendingTests": "number",
+            "reviewLeft": "number",
+            "reviewedWords": "number"
+          }
+        },
+        "streak": "number",
+        "totals": {
+          "object": {
+            "newDoneToday": "number",
+            "newLeft": "number",
+            "pendingTests": "number",
+            "reviewDoneToday": "number",
+            "reviewLeft": "number"
+          }
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

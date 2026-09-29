@@ -1,0 +1,58 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "items": {
+          "array": [
+            {
+              "object": {
+                "definition": "string",
+                "partOfSpeech": "null",
+                "phonetic": "null",
+                "reasons": {
+                  "array": [
+                    {
+                      "object": {
+                        "count": "number",
+                        "kind": "string"
+                      }
+                    },
+                    {
+                      "object": {
+                        "kind": "string"
+                      }
+                    }
+                  ]
+                },
+                "score": "number",
+                "spelling": "string",
+                "wordId": "string"
+              }
+            },
+            {
+              "object": {
+                "definition": "string",
+                "partOfSpeech": "null",
+                "phonetic": "null",
+                "reasons": {
+                  "array": [
+                    {
+                      "object": {
+                        "kind": "string"
+                      }
+                    }
+                  ]
+                },
+                "score": "number",
+                "spelling": "string",
+                "wordId": "string"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

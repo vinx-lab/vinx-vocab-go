@@ -1,0 +1,18 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "createdAt": "datetime",
+        "description": "null",
+        "id": "string",
+        "isSystem": "boolean",
+        "name": "string",
+        "ownerId": "string",
+        "sortOrder": "number",
+        "updatedAt": "datetime"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

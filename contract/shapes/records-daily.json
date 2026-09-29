@@ -1,0 +1,21 @@
+{
+  "object": {
+    "data": {
+      "array": [
+        {
+          "object": {
+            "answers": "number",
+            "correct": "number",
+            "day": "string",
+            "firstAttempts": "number",
+            "minutes": "number",
+            "newWords": "number",
+            "reviewedWords": "number"
+          }
+        }
+      ]
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

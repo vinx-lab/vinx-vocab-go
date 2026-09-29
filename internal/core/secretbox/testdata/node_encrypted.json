@@ -1,0 +1,21 @@
+{
+  "secret": "interop-test-settings-secret-xyz",
+  "nodeEncrypted": [
+    {
+      "plain": "sk-test-1234567890abcd",
+      "box": "v1:nu_kFXJxLOs83K5sXTRsgtgI1ZFzbIUrIxaUoVKWgVwQfj1cYBGcQGY1vfAVz4P2Blg"
+    },
+    {
+      "plain": "",
+      "box": "v1:2dAIe5wbcYMVM2NfH2W_LbJdr-qE0_wn4z2S4Q"
+    },
+    {
+      "plain": "短密钥测试-中文-emoji-🚀",
+      "box": "v1:dXkix-e4G426PU7WVoQLwlPxVpg9C8ftHFJlOc6NkIGrIyZq8ynH5LMBn8gTwEMBaFfOisOz5Q893oZ4rQ"
+    },
+    {
+      "plain": "a-very-long-api-key-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "box": "v1:IYEeChhUa_2y1SmeSZ5t4GnObFN_AvcrQFIT8YUHyW9qS5CFjShSPZGUYdMysNDRT4omgLq7uEPr3Q_slhsK3MAfBUFG_4EAJoCa5nMi9qah_EZ1xHRkkNXRKB4W7ULGjJWkC6P1m14qwDyN-YHZse94BsC_YGuj-PJehKZtbPylFwCgX41ipaej_PWc1EjWa9nVeEV7I4_zh7GQuf1udlAdWuTSMIfpp3fUhs_KnN_Bt-ployEk_zyO4hEH1IjOP6HLY2Np-7qTORTWqfMyGyBaMqg0mmUwqDMn7HxKEo9COAGTryQyH6KYe8VRhdUouutSIBjDuq8"
+    }
+  ]
+}

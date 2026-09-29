@@ -1,0 +1,22 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "ai": "boolean",
+        "audio": "boolean",
+        "edition": "string",
+        "features": {
+          "object": {
+            "assignToOthers": "boolean",
+            "classes": "boolean",
+            "multiUser": "boolean",
+            "studentRecords": "boolean"
+          }
+        },
+        "signupEnabled": "boolean"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "audioFile": "null",
+        "createdAt": "datetime",
+        "definition": "string",
+        "example": "null",
+        "exampleAt": "null",
+        "exampleCn": "null",
+        "exampleSource": "null",
+        "id": "string",
+        "partOfSpeech": "null",
+        "phonetic": "null",
+        "spelling": "string",
+        "type": "string",
+        "updatedAt": "datetime",
+        "usedBy": {
+          "array": [
+            {
+              "object": {
+                "bookId": "string",
+                "bookName": "string",
+                "unitId": "string",
+                "unitName": "string"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

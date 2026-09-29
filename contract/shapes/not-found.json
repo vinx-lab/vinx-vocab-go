@@ -1,0 +1,13 @@
+{
+  "object": {
+    "error": {
+      "object": {
+        "code": "string",
+        "message": "string",
+        "requestId": "string"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

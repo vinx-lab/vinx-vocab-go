@@ -1,0 +1,22 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "capabilities": {
+          "array": [
+            "string"
+          ]
+        },
+        "createdAt": "datetime",
+        "currentGrade": "null",
+        "email": "string",
+        "id": "string",
+        "name": "string",
+        "role": "string",
+        "theme": "string"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

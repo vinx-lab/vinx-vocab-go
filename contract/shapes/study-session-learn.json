@@ -1,0 +1,60 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "answers": {
+          "array": []
+        },
+        "completedAt": "null",
+        "id": "string",
+        "isOwner": "boolean",
+        "items": {
+          "array": [
+            {
+              "object": {
+                "answer": "string",
+                "cloze": "null",
+                "clozeCn": "null",
+                "definition": "string",
+                "example": "null",
+                "exampleCn": "null",
+                "isNew": "boolean",
+                "modes": {
+                  "array": [
+                    "string"
+                  ]
+                },
+                "options": {
+                  "array": [
+                    "string"
+                  ]
+                },
+                "partOfSpeech": "string",
+                "phonetic": "string",
+                "spelling": "string",
+                "type": "string",
+                "wordId": "string"
+              }
+            }
+          ]
+        },
+        "kind": "string",
+        "modes": {
+          "array": [
+            "string"
+          ]
+        },
+        "planId": "string",
+        "planName": "string",
+        "progress": "null",
+        "result": "null",
+        "sheetId": "null",
+        "startedAt": "datetime",
+        "status": "string",
+        "userId": "string"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

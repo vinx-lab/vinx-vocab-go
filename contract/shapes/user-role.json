@@ -1,0 +1,12 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "id": "string",
+        "role": "string"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

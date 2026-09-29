@@ -1,0 +1,19 @@
+{
+  "object": {
+    "error": {
+      "object": {
+        "code": "string",
+        "details": {
+          "object": {
+            "email": "string",
+            "password": "string"
+          }
+        },
+        "message": "string",
+        "requestId": "string"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

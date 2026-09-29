@@ -1,0 +1,36 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "items": {
+          "array": [
+            {
+              "object": {
+                "definition": "string",
+                "difficulty": "number",
+                "due": "datetime",
+                "introducedDay": "string",
+                "isDue": "boolean",
+                "lapses": "number",
+                "lastReview": "datetime",
+                "level": "string",
+                "levelLabel": "string",
+                "partOfSpeech": "string",
+                "phonetic": "string",
+                "reps": "number",
+                "spelling": "string",
+                "stability": "number",
+                "wordId": "string"
+              }
+            }
+          ]
+        },
+        "limit": "number",
+        "page": "number",
+        "total": "number"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

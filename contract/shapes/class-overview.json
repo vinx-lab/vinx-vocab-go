@@ -1,0 +1,136 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "activeByDay": {
+          "array": [
+            {
+              "object": {
+                "accuracy": "null",
+                "activeStudents": "number",
+                "answers": "number",
+                "day": "string"
+              }
+            },
+            {
+              "object": {
+                "accuracy": "number",
+                "activeStudents": "number",
+                "answers": "number",
+                "day": "string"
+              }
+            }
+          ]
+        },
+        "class": {
+          "object": {
+            "id": "string",
+            "inviteCode": "string",
+            "memberCount": "number",
+            "name": "string"
+          }
+        },
+        "day": "string",
+        "hardWords": {
+          "array": [
+            {
+              "object": {
+                "definition": "string",
+                "rate": "number",
+                "spelling": "string",
+                "total": "number",
+                "wordId": "string",
+                "wrong": "number"
+              }
+            }
+          ]
+        },
+        "students": {
+          "array": [
+            {
+              "object": {
+                "accuracy7d": {
+                  "object": {
+                    "correct": "number",
+                    "rate": "null",
+                    "total": "number"
+                  }
+                },
+                "activeDays7": "number",
+                "email": "string",
+                "joinedAt": "datetime",
+                "lastActiveDay": "null",
+                "learnedWords": "number",
+                "minutes7d": "number",
+                "name": "string",
+                "streak": "number",
+                "today": {
+                  "object": {
+                    "answers": "number",
+                    "minutes": "number",
+                    "newDone": "number",
+                    "newLeft": "number",
+                    "pendingTests": "number",
+                    "reviewDone": "number",
+                    "reviewLeft": "number",
+                    "status": "string"
+                  }
+                },
+                "userId": "string"
+              }
+            },
+            {
+              "object": {
+                "accuracy7d": {
+                  "object": {
+                    "correct": "number",
+                    "rate": "number",
+                    "total": "number"
+                  }
+                },
+                "activeDays7": "number",
+                "email": "string",
+                "joinedAt": "datetime",
+                "lastActiveDay": "null",
+                "learnedWords": "number",
+                "minutes7d": "number",
+                "name": "string",
+                "streak": "number",
+                "today": {
+                  "object": {
+                    "answers": "number",
+                    "minutes": "number",
+                    "newDone": "number",
+                    "newLeft": "number",
+                    "pendingTests": "number",
+                    "reviewDone": "number",
+                    "reviewLeft": "number",
+                    "status": "string"
+                  }
+                },
+                "userId": "string"
+              }
+            }
+          ]
+        },
+        "summary": {
+          "object": {
+            "accuracy7d": {
+              "object": {
+                "correct": "number",
+                "rate": "number",
+                "total": "number"
+              }
+            },
+            "doneToday": "number",
+            "inProgress": "number",
+            "noPlan": "number",
+            "notStarted": "number"
+          }
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

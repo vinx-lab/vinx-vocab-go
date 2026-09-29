@@ -1,0 +1,62 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "canEdit": "boolean",
+        "createdAt": "datetime",
+        "creator": {
+          "object": {
+            "id": "string",
+            "name": "string"
+          }
+        },
+        "endDate": "null",
+        "id": "string",
+        "isSelfPlan": "boolean",
+        "kind": "string",
+        "modes": {
+          "array": [
+            "string"
+          ]
+        },
+        "name": "string",
+        "newPerDay": "number",
+        "order": "string",
+        "reviewPerDay": "number",
+        "startDate": "null",
+        "status": "string",
+        "targets": {
+          "array": [
+            {
+              "object": {
+                "email": "string",
+                "id": "string",
+                "name": "string",
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "targetsMe": "boolean",
+        "testScope": "string",
+        "testSize": "number",
+        "units": {
+          "array": [
+            {
+              "object": {
+                "bookId": "string",
+                "bookName": "string",
+                "id": "string",
+                "name": "string"
+              }
+            }
+          ]
+        },
+        "updatedAt": "datetime",
+        "wordCount": "number"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

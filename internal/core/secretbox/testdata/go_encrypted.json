@@ -1,0 +1,17 @@
+{
+  "goEncrypted": [
+    {
+      "plain": "sk-test-1234567890abcd",
+      "box": "v1:rhDhj36iB2KNqE5Er8fd0lFEi_ZUQfv9AwzDeGimNlRdQFfjZSujNW1LrQjPlyKB1sk"
+    },
+    {
+      "plain": "",
+      "box": "v1:w1vEsInVARxyy1vQ8H4sCB9OrJESdQQKEp71Xg"
+    },
+    {
+      "plain": "短密钥测试-中文-emoji-🚀",
+      "box": "v1:pD3TQkYUYgnueneODDp9GuONpqqWXxDxF8EPSBy25vXJX9xgfxWcXxiMe3TR1hOlm5QiyK6bVx5aO-btLQ"
+    }
+  ],
+  "secret": "interop-test-settings-secret-xyz"
+}

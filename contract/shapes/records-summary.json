@@ -1,0 +1,49 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "accuracy30d": {
+          "object": {
+            "correct": "number",
+            "rate": "number",
+            "total": "number"
+          }
+        },
+        "accuracy7d": {
+          "object": {
+            "correct": "number",
+            "rate": "number",
+            "total": "number"
+          }
+        },
+        "activeDays30": "number",
+        "day": "string",
+        "dueToday": "number",
+        "lastActiveDay": "string",
+        "learnedWords": "number",
+        "mastery": {
+          "object": {
+            "consolidating": "number",
+            "learning": "number",
+            "mastered": "number"
+          }
+        },
+        "minutes7d": "number",
+        "streak": "number",
+        "today": {
+          "object": {
+            "answers": "number",
+            "minutes": "number",
+            "newLeft": "number",
+            "newWords": "number",
+            "pendingTests": "number",
+            "reviewLeft": "number",
+            "reviewedWords": "number"
+          }
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "stats": {
+          "object": {
+            "entries": "number",
+            "error": "number",
+            "existing": "number",
+            "ok": "number",
+            "units": "number",
+            "warning": "number"
+          }
+        },
+        "units": {
+          "array": [
+            {
+              "object": {
+                "entries": {
+                  "array": [
+                    {
+                      "object": {
+                        "definition": "string",
+                        "existing": "boolean",
+                        "existingDefinition": "null",
+                        "issues": {
+                          "array": [
+                            "string"
+                          ]
+                        },
+                        "line": "number",
+                        "partOfSpeech": "string",
+                        "phonetic": "string",
+                        "raw": "string",
+                        "spelling": "string",
+                        "status": "string",
+                        "type": "string"
+                      }
+                    },
+                    {
+                      "object": {
+                        "definition": "string",
+                        "existing": "boolean",
+                        "existingDefinition": "string",
+                        "issues": {
+                          "array": []
+                        },
+                        "line": "number",
+                        "partOfSpeech": "string",
+                        "phonetic": "string",
+                        "raw": "string",
+                        "spelling": "string",
+                        "status": "string",
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "name": "string"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

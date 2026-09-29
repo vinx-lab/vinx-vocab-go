@@ -1,0 +1,16 @@
+{
+  "name": "vinx-vocab-contract",
+  "private": true,
+  "type": "module",
+  "description": "API 黑盒契约测试：同一套用例先在 oracle（旧 Node 后端）跑绿，再在 Go 单文件上跑绿",
+  "scripts": {
+    "test": "vitest run",
+    "test:oracle": "BASE_URL=http://localhost:4100 vitest run",
+    "test:go": "BASE_URL=http://localhost:3200/api vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.6.3",
+    "vitest": "^3.0.5"
+  }
+}

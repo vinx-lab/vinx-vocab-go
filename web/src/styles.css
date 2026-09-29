@@ -1,0 +1,286 @@
+/* VinxVocab 视觉基调：纸本词卡 —— 暖白纸面、墨蓝正文、深青主色、朱砂点睛 */
+/* 浅色是默认；[data-theme="light"] 让局部（单词单打印页）在深色下仍按浅色显示 */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --paper: #f7f4ec;
+  --paper-deep: #efe9dc;
+  --surface: #fffdf8;
+  --ink: #1d2740;
+  --ink-soft: #4a5468;
+  --muted: #8a8f9c;
+  --line: #e4ddcc;
+  --line-strong: #cfc6b2;
+  --primary: #0f6e66;
+  --primary-soft: #dcefeb;
+  --accent: #c2410c;
+  --accent-soft: #fbe8dc;
+  --accent-line: #f3cdb6;
+  --good: #2f7d4a;
+  --good-soft: #e1f1e5;
+  --bad: #b42318;
+  --bad-soft: #fbe4e1;
+  --bad-line: #f1c4bf;
+  --track: #efe9dc;
+  --grain: rgba(29, 39, 64, 0.035);
+  --header-bg: rgba(247, 244, 236, 0.86);
+  --tabbar-bg: rgba(255, 253, 248, 0.96);
+  /* 图表：dataviz 校验过的浅色面色板 */
+  --chart-new: #d9531e;
+  --chart-review: #00897b;
+  --chart-grid: #e9e2d2;
+  --chart-axis: #8a8f9c;
+  --chart-hover: rgba(29, 39, 64, 0.04);
+  --chart-tooltip-shadow: 0 6px 16px -8px rgba(29, 39, 64, 0.35);
+  --mastery-1: #9fd8cf;
+  --mastery-2: #3fae9f;
+  --mastery-3: #00695c;
+  --serif-en: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
+  --serif-cn: "Songti SC", "STSong", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --radius: 14px;
+  --shadow: 0 1px 0 rgba(29, 39, 64, 0.04), 0 8px 24px -12px rgba(29, 39, 64, 0.18);
+}
+
+/* 深色：深墨蓝纸面、浅米色字；主色/强调色保持色相、提高亮度（与 theme.ts 的深色 token 保持一致） */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #141a26;
+  --paper-deep: #10151f;
+  --surface: #1b2230;
+  --ink: #ece6d8;
+  --ink-soft: #bdb7a9;
+  --muted: #8d92a0;
+  --line: #2c3444;
+  --line-strong: #3d4659;
+  --primary: #4dbfb0;
+  --primary-soft: #173a38;
+  --accent: #f08a5d;
+  --accent-soft: #3a2519;
+  --accent-line: #6b3b24;
+  --good: #5cc585;
+  --good-soft: #163022;
+  --bad: #f27b70;
+  --bad-soft: #3b1d1d;
+  --bad-line: #74322d;
+  --track: #2a3242;
+  --grain: rgba(236, 230, 216, 0.03);
+  --header-bg: rgba(20, 26, 38, 0.86);
+  --tabbar-bg: rgba(27, 34, 48, 0.96);
+  --chart-new: #f07a45;
+  --chart-review: #3dbfae;
+  --chart-grid: #273043;
+  --chart-axis: #8d92a0;
+  --chart-hover: rgba(236, 230, 216, 0.06);
+  --chart-tooltip-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.7);
+  --mastery-1: #235e57;
+  --mastery-2: #2f9a8b;
+  --mastery-3: #7fdccd;
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.25), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 纸面细纹 */
+.vx-paper {
+  background-color: var(--paper);
+  background-image: radial-gradient(var(--grain) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.vx-word {
+  font-family: var(--serif-en);
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+
+.vx-cn {
+  font-family: var(--serif-cn);
+}
+
+/* 例句：英文是学习对象，字号明显大于中文翻译（西文衬线同字号视觉上比中文小） */
+.vx-example-en {
+  font-family: var(--serif-en);
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.vx-example-cn {
+  font-family: var(--serif-cn);
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.vx-example-en.is-compact {
+  font-size: 15px;
+}
+
+.vx-example-cn.is-compact {
+  font-size: 12px;
+}
+
+.vx-title {
+  font-family: var(--serif-cn);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin: 0;
+  color: var(--ink);
+}
+
+.vx-eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.vx-num {
+  font-family: var(--serif-en);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.vx-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.vx-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+}
+
+@media (max-width: 640px) {
+  .vx-page {
+    padding: 16px 14px 88px;
+  }
+}
+
+@keyframes vx-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.vx-rise {
+  animation: vx-rise 0.42s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes vx-shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
+}
+
+.vx-shake {
+  animation: vx-shake 0.4s both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vx-rise,
+  .vx-shake {
+    animation: none;
+  }
+}
+
+/* 移动端：避免双击缩放、iOS 输入框自动放大，按钮点击区域足够大 */
+button,
+.ant-btn,
+a {
+  touch-action: manipulation;
+}
+
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
+.vx-tap {
+  min-height: 52px;
+}
+
+/* 沉浸式学习页：底部留出手机安全区 */
+.vx-study-main {
+  padding-bottom: calc(32px + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 640px) {
+  .vx-study-main {
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+}
+
+/* antd 微调 */
+.ant-layout {
+  background: transparent;
+}
+
+.ant-menu-light.ant-menu-root.ant-menu-inline {
+  border-inline-end: none;
+  background: transparent;
+}
+
+.ant-card {
+  border-color: var(--line);
+}
+
+/* ============ 单词单打印（整页 A4）============
+ * 纸张 210mm × 297mm，@page 页边距为 0（浏览器没有地方印网址和页码），留白由 .vx-sheet-page 的 12mm 内边距提供。
+ * 折线在纸张物理正中 105mm：左侧 12mm 内边距 + 8 + 42 + 43 = 105mm；右侧中文栏同样 93mm 宽，正反面对折都对得上。
+ */
+/* 打印页始终白底黑字：外层 data-theme="light" 重置色板，页面底色也不跟深色走 */
+.vx-print-scope { min-height: 100vh; background: var(--paper); color: var(--ink); }
+html:has(.vx-print-scope),
+html:has(.vx-print-scope) body { background: #e8e8e8; }
+.vx-sheet-root { background: #e8e8e8; color: #000; min-height: 100vh; padding-bottom: 8mm; }
+.vx-sheet-toolbar { display: flex; gap: 8px; padding: 16px; justify-content: center; align-items: center; flex-wrap: wrap; }
+.vx-sheet-tip { color: #555; font-size: 13px; }
+.vx-sheet-page {
+  position: relative; box-sizing: border-box; width: 210mm; height: 297mm; margin: 0 auto 8mm; padding: 12mm;
+  background: #fff; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15); font-size: 11pt; overflow: hidden;
+}
+/* 纸张上下边缘在 105mm 处的对折刻度 */
+.vx-sheet-page::before, .vx-sheet-page::after { content: ""; position: absolute; left: 105mm; height: 6mm; border-left: 1px solid #000; }
+.vx-sheet-page::before { top: 0; }
+.vx-sheet-page::after { bottom: 0; }
+.vx-sheet-head, .vx-sheet-foot { display: flex; justify-content: space-between; align-items: baseline; }
+.vx-sheet-head { border-bottom: 1.5px solid #000; padding-bottom: 2mm; margin-bottom: 1mm; }
+.vx-sheet-foot { border-top: 1px solid #000; padding-top: 2mm; margin-top: 1mm; font-size: 9pt; }
+.vx-sheet-row { display: grid; grid-template-columns: 8mm 42mm 43mm 0 93mm; align-items: center; height: 8mm; border-bottom: 0.5px solid #bbb; }
+.vx-sheet-no { color: #666; font-size: 9pt; }
+.vx-sheet-en { font-weight: 600; font-size: 12pt; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding-right: 1mm; }
+.vx-sheet-ph { color: #444; font-size: 9pt; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding-right: 2mm; }
+.vx-sheet-fold { height: 100%; border-left: 1px dashed #000; }
+.vx-sheet-cn { padding-left: 4mm; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+@media print {
+  @page { size: A4; margin: 0; }
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+  .vx-noprint { display: none !important; }
+  .vx-sheet-root { min-height: 0; padding: 0; background: #fff; }
+  .vx-sheet-page { margin: 0; box-shadow: none; page-break-after: always; break-after: page; }
+  .vx-sheet-page:last-child { page-break-after: auto; break-after: auto; }
+}

@@ -1,0 +1,28 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "items": {
+          "array": [
+            {
+              "object": {
+                "archived": "boolean",
+                "createdAt": "datetime",
+                "id": "string",
+                "inviteCode": "string",
+                "memberCount": "number",
+                "name": "string",
+                "planCount": "number",
+                "teacherId": "string",
+                "teacherName": "string"
+              }
+            }
+          ]
+        },
+        "total": "number"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

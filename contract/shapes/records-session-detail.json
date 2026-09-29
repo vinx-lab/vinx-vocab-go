@@ -1,0 +1,88 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "completedAt": "datetime",
+        "id": "string",
+        "kind": "string",
+        "modes": {
+          "array": [
+            "string"
+          ]
+        },
+        "planId": "string",
+        "planName": "string",
+        "result": {
+          "object": {
+            "accuracy": "number",
+            "correctFirst": "number",
+            "durationMs": "number",
+            "newLearned": "number",
+            "ratings": {
+              "object": {
+                "again": "number",
+                "hard": "number"
+              }
+            },
+            "settled": "number",
+            "totalFirst": "number",
+            "unsettled": "number",
+            "words": "number",
+            "wrongWordIds": {
+              "array": [
+                "string"
+              ]
+            }
+          }
+        },
+        "startedAt": "datetime",
+        "status": "string",
+        "user": {
+          "object": {
+            "id": "string",
+            "name": "string"
+          }
+        },
+        "words": {
+          "array": [
+            {
+              "object": {
+                "answers": {
+                  "array": [
+                    {
+                      "object": {
+                        "attempt": "number",
+                        "correct": "boolean",
+                        "dontKnow": "boolean",
+                        "durationMs": "number",
+                        "hintUsed": "boolean",
+                        "mode": "string",
+                        "phase": "string",
+                        "userAnswer": "string"
+                      }
+                    }
+                  ]
+                },
+                "definition": "string",
+                "partOfSpeech": "string",
+                "phonetic": "string",
+                "review": {
+                  "object": {
+                    "dueAfter": "datetime",
+                    "rating": "number",
+                    "stabilityAfter": "number",
+                    "wordId": "string"
+                  }
+                },
+                "spelling": "string",
+                "wordId": "string"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

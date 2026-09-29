@@ -1,0 +1,11 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "status": "string"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

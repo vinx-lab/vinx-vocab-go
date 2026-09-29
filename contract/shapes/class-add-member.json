@@ -1,0 +1,13 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "email": "string",
+        "id": "string",
+        "name": "string"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

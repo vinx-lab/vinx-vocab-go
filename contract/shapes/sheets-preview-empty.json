@@ -1,0 +1,13 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "items": {
+          "array": []
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

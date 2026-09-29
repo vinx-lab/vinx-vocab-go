@@ -1,0 +1,88 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "answers": {
+          "array": [
+            {
+              "object": {
+                "attempt": "number",
+                "correct": "boolean",
+                "createdAt": "datetime",
+                "dayKey": "string",
+                "dontKnow": "boolean",
+                "hintUsed": "boolean",
+                "id": "string",
+                "mode": "string",
+                "phase": "string",
+                "sessionId": "string",
+                "userAnswer": "string"
+              }
+            }
+          ]
+        },
+        "memory": {
+          "object": {
+            "difficulty": "number",
+            "due": "datetime",
+            "elapsedDays": "number",
+            "id": "string",
+            "introducedAt": "datetime",
+            "introducedDay": "string",
+            "introducedPlanId": "string",
+            "lapses": "number",
+            "lastReview": "datetime",
+            "learningSteps": "number",
+            "level": "string",
+            "levelLabel": "string",
+            "reps": "number",
+            "scheduledDays": "number",
+            "stability": "number",
+            "state": "number",
+            "updatedAt": "datetime",
+            "userId": "string",
+            "wordId": "string"
+          }
+        },
+        "reviewLogs": {
+          "array": [
+            {
+              "object": {
+                "dayKey": "string",
+                "difficultyAfter": "number",
+                "dueAfter": "datetime",
+                "id": "string",
+                "rating": "number",
+                "reviewedAt": "datetime",
+                "sessionId": "string",
+                "stabilityAfter": "number",
+                "stateBefore": "number",
+                "userId": "string",
+                "wordId": "string"
+              }
+            }
+          ]
+        },
+        "word": {
+          "object": {
+            "audioFile": "null",
+            "createdAt": "datetime",
+            "definition": "string",
+            "example": "null",
+            "exampleAt": "null",
+            "exampleCn": "null",
+            "exampleSource": "null",
+            "id": "string",
+            "partOfSpeech": "string",
+            "phonetic": "string",
+            "spelling": "string",
+            "type": "string",
+            "updatedAt": "datetime"
+          }
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

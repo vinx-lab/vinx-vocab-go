@@ -1,0 +1,39 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "result": {
+          "object": {
+            "accuracy": "number",
+            "correctFirst": "number",
+            "durationMs": "number",
+            "newLearned": "number",
+            "ratings": {
+              "object": {
+                "again": "number",
+                "hard": "number"
+              }
+            },
+            "settled": "number",
+            "totalFirst": "number",
+            "unsettled": "number",
+            "words": "number",
+            "wrongWordIds": {
+              "array": [
+                "string"
+              ]
+            }
+          }
+        },
+        "session": {
+          "object": {
+            "id": "string",
+            "status": "string"
+          }
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "items": {
+          "array": [
+            {
+              "object": {
+                "createdAt": "datetime",
+                "id": "string",
+                "title": "string",
+                "titleCn": "string",
+                "wordCount": "number"
+              }
+            }
+          ]
+        },
+        "limit": "number",
+        "page": "number",
+        "total": "number"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

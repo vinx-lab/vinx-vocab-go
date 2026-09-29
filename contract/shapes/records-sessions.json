@@ -1,0 +1,186 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "items": {
+          "array": [
+            {
+              "object": {
+                "answers": "number",
+                "completedAt": "datetime",
+                "dayKey": "string",
+                "id": "string",
+                "kind": "string",
+                "planId": "null",
+                "planName": "string",
+                "result": {
+                  "object": {
+                    "accuracy": "number",
+                    "correctFirst": "number",
+                    "durationMs": "number",
+                    "newLearned": "number",
+                    "ratings": {
+                      "object": {}
+                    },
+                    "settled": "number",
+                    "totalFirst": "number",
+                    "unsettled": "number",
+                    "words": "number",
+                    "wrongWordIds": {
+                      "array": []
+                    }
+                  }
+                },
+                "startedAt": "datetime",
+                "status": "string",
+                "words": "number"
+              }
+            },
+            {
+              "object": {
+                "answers": "number",
+                "completedAt": "datetime",
+                "dayKey": "string",
+                "id": "string",
+                "kind": "string",
+                "planId": "string",
+                "planName": "string",
+                "result": {
+                  "object": {
+                    "accuracy": "null",
+                    "correctFirst": "number",
+                    "durationMs": "number",
+                    "newLearned": "number",
+                    "ratings": {
+                      "object": {}
+                    },
+                    "settled": "number",
+                    "totalFirst": "number",
+                    "unsettled": "number",
+                    "words": "number",
+                    "wrongWordIds": {
+                      "array": []
+                    }
+                  }
+                },
+                "startedAt": "datetime",
+                "status": "string",
+                "words": "number"
+              }
+            },
+            {
+              "object": {
+                "answers": "number",
+                "completedAt": "datetime",
+                "dayKey": "string",
+                "id": "string",
+                "kind": "string",
+                "planId": "string",
+                "planName": "string",
+                "result": {
+                  "object": {
+                    "accuracy": "number",
+                    "correctFirst": "number",
+                    "durationMs": "number",
+                    "newLearned": "number",
+                    "ratings": {
+                      "object": {
+                        "again": "number",
+                        "hard": "number"
+                      }
+                    },
+                    "settled": "number",
+                    "totalFirst": "number",
+                    "unsettled": "number",
+                    "words": "number",
+                    "wrongWordIds": {
+                      "array": [
+                        "string"
+                      ]
+                    }
+                  }
+                },
+                "startedAt": "datetime",
+                "status": "string",
+                "words": "number"
+              }
+            },
+            {
+              "object": {
+                "answers": "number",
+                "completedAt": "datetime",
+                "dayKey": "string",
+                "id": "string",
+                "kind": "string",
+                "planId": "string",
+                "planName": "string",
+                "result": {
+                  "object": {
+                    "accuracy": "number",
+                    "correctFirst": "number",
+                    "durationMs": "number",
+                    "newLearned": "number",
+                    "ratings": {
+                      "object": {
+                        "hard": "number"
+                      }
+                    },
+                    "settled": "number",
+                    "totalFirst": "number",
+                    "unsettled": "number",
+                    "words": "number",
+                    "wrongWordIds": {
+                      "array": []
+                    }
+                  }
+                },
+                "startedAt": "datetime",
+                "status": "string",
+                "words": "number"
+              }
+            },
+            {
+              "object": {
+                "answers": "number",
+                "completedAt": "datetime",
+                "dayKey": "string",
+                "id": "string",
+                "kind": "string",
+                "planId": "string",
+                "planName": "string",
+                "result": {
+                  "object": {
+                    "accuracy": "number",
+                    "correctFirst": "number",
+                    "durationMs": "number",
+                    "newLearned": "number",
+                    "ratings": {
+                      "object": {}
+                    },
+                    "settled": "number",
+                    "totalFirst": "number",
+                    "unsettled": "number",
+                    "words": "number",
+                    "wrongWordIds": {
+                      "array": [
+                        "string"
+                      ]
+                    }
+                  }
+                },
+                "startedAt": "datetime",
+                "status": "string",
+                "words": "number"
+              }
+            }
+          ]
+        },
+        "limit": "number",
+        "page": "number",
+        "total": "number"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

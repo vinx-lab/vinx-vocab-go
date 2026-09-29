@@ -1,0 +1,15 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "bookId": "string",
+        "createdAt": "datetime",
+        "id": "string",
+        "name": "string",
+        "sortOrder": "number"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

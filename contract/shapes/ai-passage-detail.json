@@ -1,0 +1,39 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "createdAt": "datetime",
+        "id": "string",
+        "model": "string",
+        "passage": "string",
+        "passageCn": "string",
+        "questions": {
+          "array": [
+            {
+              "object": {
+                "a": "string",
+                "q": "string"
+              }
+            }
+          ]
+        },
+        "title": "string",
+        "titleCn": "string",
+        "words": {
+          "array": [
+            {
+              "object": {
+                "definition": "string",
+                "id": "string",
+                "phonetic": "null",
+                "spelling": "string"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

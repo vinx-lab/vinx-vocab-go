@@ -1,0 +1,13 @@
+{
+  "name": "vinx-vocab-e2e",
+  "private": true,
+  "type": "module",
+  "description": "端到端用例：旧版 e2e/specs 原样迁移（去掉 public.spec）+ Go 版新增用例，跑在 Go 单文件上",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@types/node": "^22.10.2"
+  }
+}

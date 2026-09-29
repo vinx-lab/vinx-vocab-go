@@ -1,0 +1,17 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "archived": "boolean",
+        "createdAt": "datetime",
+        "id": "string",
+        "inviteCode": "string",
+        "name": "string",
+        "teacherId": "string",
+        "updatedAt": "datetime"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

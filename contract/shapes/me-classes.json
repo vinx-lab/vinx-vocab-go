@@ -1,0 +1,24 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "items": {
+          "array": [
+            {
+              "object": {
+                "archived": "boolean",
+                "id": "string",
+                "joinedAt": "datetime",
+                "name": "string",
+                "teacherName": "string"
+              }
+            }
+          ]
+        },
+        "total": "number"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

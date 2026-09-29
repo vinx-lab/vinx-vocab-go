@@ -1,0 +1,104 @@
+{
+  "object": {
+    "data": {
+      "object": {
+        "answers": {
+          "array": [
+            {
+              "object": {
+                "attempt": "number",
+                "correct": "boolean",
+                "dontKnow": "boolean",
+                "hintUsed": "boolean",
+                "mode": "string",
+                "phase": "string",
+                "userAnswer": "string",
+                "wordId": "string"
+              }
+            }
+          ]
+        },
+        "completedAt": "datetime",
+        "id": "string",
+        "isOwner": "boolean",
+        "items": {
+          "array": [
+            {
+              "object": {
+                "answer": "string",
+                "cloze": "null",
+                "clozeCn": "null",
+                "definition": "string",
+                "example": "null",
+                "exampleCn": "null",
+                "isNew": "boolean",
+                "modes": {
+                  "array": [
+                    "string"
+                  ]
+                },
+                "options": {
+                  "array": [
+                    "string"
+                  ]
+                },
+                "partOfSpeech": "string",
+                "phonetic": "string",
+                "spelling": "string",
+                "type": "string",
+                "wordId": "string"
+              }
+            }
+          ]
+        },
+        "kind": "string",
+        "modes": {
+          "array": [
+            "string"
+          ]
+        },
+        "planId": "string",
+        "planName": "string",
+        "progress": {
+          "object": {
+            "queue": {
+              "array": [
+                "string"
+              ]
+            },
+            "step": "number"
+          }
+        },
+        "result": {
+          "object": {
+            "accuracy": "number",
+            "correctFirst": "number",
+            "durationMs": "number",
+            "newLearned": "number",
+            "ratings": {
+              "object": {
+                "again": "number",
+                "hard": "number"
+              }
+            },
+            "settled": "number",
+            "totalFirst": "number",
+            "unsettled": "number",
+            "words": "number",
+            "wrongWordIds": {
+              "array": [
+                "string"
+              ]
+            }
+          }
+        },
+        "sheetId": "null",
+        "startedAt": "datetime",
+        "status": "string",
+        "userId": "string"
+      }
+    },
+    "success": "boolean",
+    "timestamp": "datetime"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "object": {
+    "elapsedMs": "number",
+    "id": "string",
+    "kind": "string",
+    "result": {
+      "object": {
+        "id": "string",
+        "missingWords": {
+          "array": []
+        },
+        "title": "string"
+      }
+    },
+    "status": "string"
+  }
+}
