@@ -129,7 +129,9 @@ test.describe("AI 生成前预览与后台任务", () => {
 
     // 改一句提示词；「恢复」可以回到拼好的内容
     const original = await box.inputValue();
-    const edited = original.replace("总长 80–140 个英文单词", "总长 60–100 个英文单词，故事发生在运动会上");
+    // spec 0005：默认模板的长度来自学段占位符（初中「80～140 词」）
+    const edited = original.replace("总长 80～140 词", "总长 60～100 词，故事发生在运动会上");
+    expect(edited).not.toBe(original);
     await box.fill(edited);
     await page.getByRole("button", { name: /恢\s*复/ }).click();
     await expect(box).toHaveValue(original);

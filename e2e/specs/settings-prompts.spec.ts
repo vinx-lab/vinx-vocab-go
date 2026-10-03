@@ -36,7 +36,7 @@ test.describe("系统设置 · AI 提示词模板", () => {
 
     // 展开可对照默认内容
     await page.getByText("查看默认内容").first().click();
-    await expect(page.getByTestId("prompt-default-example")).toContainText("你是初中英语教材的例句编辑");
+    await expect(page.getByTestId("prompt-default-example")).toContainText("你是{学段}英语教材的例句编辑"); // spec 0005：默认模板带学段占位符
 
     await page.getByRole("button", { name: /恢复默认/ }).click();
     await page.getByRole("button", { name: /^恢\s*复$/ }).click();
