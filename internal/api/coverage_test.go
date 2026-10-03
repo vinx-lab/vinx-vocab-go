@@ -420,6 +420,28 @@ func TestCoverageAfterRealTest(t *testing.T) {
 	if d := dataOf(c.do("GET", "/api/records/coverage", "", h)); !reflect.DeepEqual(countsOf(d["total"]), map[string]float64{"target": 4, "tested": 2, "known": 0, "learning": 2, "untested": 2}) {
 		t.Fatalf("交卷后 = %v", d)
 	}
+	// 最后一步：用「要学」出单词单，应正好是这次答错的两个词
+	tested := map[string]bool{}
+	for _, raw := range items {
+		tested[raw.(map[string]any)["wordId"].(string)] = true
+	}
+	pr := c.do("POST", "/api/sheets/preview", `{"count":10,"source":{"kind":"target","status":"learning"}}`, h)
+	if pr.Status != 200 {
+		t.Fatalf("要学单词单 = %d %v", pr.Status, pr.Body)
+	}
+	got := dataOf(pr)["items"].([]any)
+	if len(got) != 2 {
+		t.Fatalf("要学单词单 items = %v", got)
+	}
+	for _, it := range got {
+		if !tested[it.(map[string]any)["wordId"].(string)] {
+			t.Fatalf("要学单词单含未测词 %v", it)
+		}
+	}
+	pu := c.do("POST", "/api/sheets/preview", `{"count":10,"source":{"kind":"target","status":"untested"}}`, h)
+	if n := len(dataOf(pu)["items"].([]any)); n != 2 {
+		t.Fatalf("未测单词单 = %d %v", n, pu.Body)
+	}
 }
 
 // 个人版：不看班级成员关系，用自己设的目标；班级目标接口 404。
