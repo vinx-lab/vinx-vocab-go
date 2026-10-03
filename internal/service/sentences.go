@@ -28,6 +28,40 @@ const (
 func init() {
 	// 0003_sentences 的数据迁移：例句转句子、AI 短文逐句拆分、计算词的关联（同一事务）。
 	store.RegisterMigrationHook("0003_sentences", BackfillSentences)
+	// 每次打开数据库：从旧版导入（vinx-vocab import）只整库替换旧版的表，不经过业务层，
+	// 导入后的第一次打开在这里补齐例句句子、短文逐句结构，并清掉没有篇引用的句子。
+	store.RegisterOpenHook(RepairSentences)
+}
+
+// orphanSentenceCond 句子已经没有任何篇引用（例句跟随词条，不算孤儿）。PruneSentences 与 RepairSentences 共用。
+const orphanSentenceCond = `"Sentence"."source" != 'example'
+	AND NOT EXISTS (SELECT 1 FROM "UnitTextSentence" uts WHERE uts."sentenceId" = "Sentence"."id")
+	AND NOT EXISTS (SELECT 1 FROM "PassageSentence" ps WHERE ps."sentenceId" = "Sentence"."id")`
+
+// sentencesNeedRepair 是否有要补齐或清理的句子（只读，决定要不要开写事务）。
+const sentencesNeedRepair = `SELECT
+	EXISTS (SELECT 1 FROM "Word" w WHERE w."example" IS NOT NULL AND trim(w."example") != ''
+		AND NOT EXISTS (SELECT 1 FROM "Sentence" s WHERE s."source" = 'example' AND s."wordId" = w."id"))
+	OR EXISTS (SELECT 1 FROM "Passage" p WHERE NOT EXISTS (SELECT 1 FROM "PassageSentence" ps WHERE ps."passageId" = p."id"))
+	OR EXISTS (SELECT 1 FROM "Sentence" WHERE ` + orphanSentenceCond + `)`
+
+// RepairSentences 打开数据库时的一致性补齐（幂等）：删除没有篇引用的句子（例如 import --force 整库覆盖后
+// 原有篇的句子），再 BackfillSentences。没有要做的事时不开写事务。
+// 注：句数不一致、保持整段的短文每次打开都会被重新检查一次（不写库）。
+func RepairSentences(ctx context.Context, d *store.DB, now time.Time) error {
+	var need bool
+	if err := d.QueryRowContext(ctx, sentencesNeedRepair).Scan(&need); err != nil {
+		return err
+	}
+	if !need {
+		return nil
+	}
+	return d.Tx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM "Sentence" WHERE `+orphanSentenceCond); err != nil {
+			return err
+		}
+		return BackfillSentences(ctx, tx, now)
+	})
 }
 
 var (
@@ -216,7 +250,8 @@ func savePassageSentences(ctx context.Context, q store.Querier, lx *Lexicon, now
 }
 
 // BackfillSentences 补齐句子（幂等）：有例句但还没有例句句子的词 → 例句句子；还没有逐句结构的 AI 短文 → 按句拆分
-// （句数不一致的保持整段）。迁移 0003_sentences 的 Go 部分，也供「重新关联全部句子」与从旧版导入后调用。
+// （句数不一致的保持整段）。迁移 0003_sentences 的 Go 部分，也供「重新关联全部句子」与打开数据库时的
+// RepairSentences 调用（从旧版导入后，下次打开数据库时由 RepairSentences 补齐）。
 func BackfillSentences(ctx context.Context, tx *sql.Tx, now time.Time) error {
 	var lx *Lexicon
 	lex := func() (*Lexicon, error) {
@@ -320,9 +355,7 @@ func PruneSentences(ctx context.Context, q store.Querier, ids []string) error {
 	const batch = 400
 	for i := 0; i < len(ids); i += batch {
 		chunk := ids[i:min(i+batch, len(ids))]
-		if _, err := q.ExecContext(ctx, `DELETE FROM "Sentence" WHERE "id" IN (`+store.Placeholders(len(chunk))+`) AND "source" != 'example'
-			AND NOT EXISTS (SELECT 1 FROM "UnitTextSentence" uts WHERE uts."sentenceId" = "Sentence"."id")
-			AND NOT EXISTS (SELECT 1 FROM "PassageSentence" ps WHERE ps."sentenceId" = "Sentence"."id")`, store.Args(chunk)...); err != nil {
+		if _, err := q.ExecContext(ctx, `DELETE FROM "Sentence" WHERE "id" IN (`+store.Placeholders(len(chunk))+`) AND `+orphanSentenceCond, store.Args(chunk)...); err != nil {
 			return err
 		}
 	}

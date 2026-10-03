@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -150,6 +151,57 @@ func TestSentencesMigrationHook(t *testing.T) {
 	}
 	if ai := sentencesOf(t, db, `"source" = 'ai'`); len(ai) != 2 {
 		t.Errorf("迁移后短文句子 = %+v", ai)
+	}
+}
+
+// 整库替换不经过业务层（如从旧版导入，只写旧版的表）后，下次打开数据库时补齐句子并清掉孤儿句子。
+func TestRepairSentencesOnOpen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vinx.db")
+	db, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 原有内容：一篇单元课文（import 句子）+ 一个保留引用的手工句子
+	mustExec(t, db, `INSERT INTO "Book" ("id","name") VALUES ('b-old','旧书')`)
+	mustExec(t, db, `INSERT INTO "Unit" ("id","bookId","name") VALUES ('u-old','b-old','U1')`)
+	mustExec(t, db, `INSERT INTO "UnitText" ("id","unitId","title") VALUES ('t-old','u-old','课文')`)
+	mustExec(t, db, `INSERT INTO "Sentence" ("id","en","cn","source") VALUES ('s-old','Old one.','旧的。','import'),('s-keep','Keep me.','留下。','manual')`)
+	mustExec(t, db, `INSERT INTO "UnitTextSentence" ("textId","sentenceId") VALUES ('t-old','s-old')`)
+	mustExec(t, db, `INSERT INTO "Book" ("id","name") VALUES ('b-keep','保留')`)
+	mustExec(t, db, `INSERT INTO "Unit" ("id","bookId","name") VALUES ('u-keep','b-keep','U1')`)
+	mustExec(t, db, `INSERT INTO "UnitText" ("id","unitId","title") VALUES ('t-keep','u-keep','课文')`)
+	mustExec(t, db, `INSERT INTO "UnitTextSentence" ("textId","sentenceId") VALUES ('t-keep','s-keep')`)
+	// 模拟整库覆盖：删掉旧书（级联删篇与关联，句子成为孤儿），直接写入带例句的词和短文
+	mustExec(t, db, `DELETE FROM "Book" WHERE "id" = 'b-old'`)
+	seedSentenceFixture(t, db)
+	if n := len(sentencesOf(t, db, `1`)); n != 2 {
+		t.Fatalf("覆盖后、重新打开前句子数 = %d", n)
+	}
+	db.Close()
+
+	db2, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db2.Close()
+	if ex := sentencesOf(t, db2, `"source" = 'example'`); len(ex) != 2 {
+		t.Errorf("重新打开后例句 = %+v", ex)
+	}
+	if ai := sentencesOf(t, db2, `"source" = 'ai'`); len(ai) != 2 {
+		t.Errorf("重新打开后短文句子 = %+v", ai)
+	}
+	if got := sentencesOf(t, db2, `"source" IN ('import','manual')`); len(got) != 1 || got[0].ID != "s-keep" {
+		t.Errorf("孤儿句子应删除、有引用的保留：%+v", got)
+	}
+	// 幂等：再打开一次不重复生成
+	db2.Close()
+	db3, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db3.Close()
+	if n := len(sentencesOf(t, db3, `1`)); n != 5 {
+		t.Errorf("再次打开后句子数 = %d", n)
 	}
 }
 

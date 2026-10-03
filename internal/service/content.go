@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vinx-lab/vinx-vocab-go/internal/core"
 	"github.com/vinx-lab/vinx-vocab-go/internal/core/vocabparser"
 	"github.com/vinx-lab/vinx-vocab-go/internal/httpx"
 	"github.com/vinx-lab/vinx-vocab-go/internal/store"
@@ -67,7 +68,8 @@ func nullIfEmpty(s string) any {
 }
 
 // ImportUnits 把若干单元导入到词书：单元按名称复用（新单元排在末尾），单词按规整后的拼写全局去重复用，
-// 单元内已有的词不重复关联。必须在事务里调用（旧版 importUnits(tx, …)）。
+// 单元内已有的词不重复关联；单元的篇（spec 0004）与单元里已有的篇类型、标题、句子都相同时不重复创建
+// （Texts / Sentences 只计新建的）。必须在事务里调用（旧版 importUnits(tx, …)）。
 func ImportUnits(ctx context.Context, tx store.Querier, now time.Time, bookID string, units []ImportUnit) (ImportResult, error) {
 	var res ImportResult
 	ts := store.NewTime(now)
@@ -185,15 +187,76 @@ func ImportUnits(ctx context.Context, tx store.Querier, now time.Time, bookID st
 		}
 	}
 	for _, p := range pending {
+		// 单元里已有相同的篇（类型、标题、句子都相同）时不重复创建：同一份文件再导入一次（例如补词）保持幂等
+		sigs, err := unitTextSignatures(ctx, tx, p.unitID)
+		if err != nil {
+			return res, err
+		}
 		for _, t := range p.texts {
+			sig := newUnitTextSignature(t)
+			if sigs[sig] {
+				continue
+			}
 			if _, err := CreateUnitText(ctx, tx, lx, now, p.unitID, t); err != nil {
 				return res, err
 			}
+			sigs[sig] = true
 			res.Texts++
 			res.Sentences += len(t.Sentences)
 		}
 	}
 	return res, nil
+}
+
+func newUnitTextSignature(t NewUnitText) string {
+	ens := make([]string, len(t.Sentences))
+	for i, s := range t.Sentences {
+		ens[i] = s.En
+	}
+	return core.UnitTextSignature(t.Kind, t.Title, ens)
+}
+
+// unitTextSignatures 单元里已有各篇的识别键（core.UnitTextSignature）。
+func unitTextSignatures(ctx context.Context, q store.Querier, unitID string) (map[string]bool, error) {
+	rows, err := q.QueryContext(ctx, `SELECT t."id", t."kind", t."title", s."en" FROM "UnitText" t
+		LEFT JOIN "UnitTextSentence" uts ON uts."textId" = t."id"
+		LEFT JOIN "Sentence" s ON s."id" = uts."sentenceId"
+		WHERE t."unitId" = ? ORDER BY t."sortOrder", t."id", uts."sortOrder"`, unitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	type text struct {
+		kind, title string
+		ens         []string
+	}
+	var order []string
+	byID := map[string]*text{}
+	for rows.Next() {
+		var id, kind, title string
+		var en *string
+		if err := rows.Scan(&id, &kind, &title, &en); err != nil {
+			return nil, err
+		}
+		t := byID[id]
+		if t == nil {
+			t = &text{kind: kind, title: title}
+			byID[id] = t
+			order = append(order, id)
+		}
+		if en != nil {
+			t.ens = append(t.ens, *en)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(order))
+	for _, id := range order {
+		t := byID[id]
+		out[core.UnitTextSignature(t.kind, t.title, t.ens)] = true
+	}
+	return out, nil
 }
 
 // dedupeImport 规整拼写、去掉空拼写或空释义、单元内按拼写（区分大小写）去重。

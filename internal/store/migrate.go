@@ -61,6 +61,26 @@ func RegisterMigrationHook(version string, hook MigrationHook) {
 	migrationHooks[version] = hook
 }
 
+// OpenHook 每次 Open 在迁移执行完之后运行的一致性补齐（必须幂等，没有要补的时候不应开写事务）。
+// 用于整库替换不经过业务层的路径（如从旧版导入只写旧版的表）：下次打开时由业务包补齐派生数据。
+type OpenHook func(ctx context.Context, d *DB, now time.Time) error
+
+var openHooks []OpenHook
+
+// RegisterOpenHook 登记打开后的钩子（由业务包在 init 里登记，按登记顺序执行）。
+func RegisterOpenHook(hook OpenHook) {
+	openHooks = append(openHooks, hook)
+}
+
+func (d *DB) runOpenHooks(ctx context.Context) error {
+	for _, h := range openHooks {
+		if err := h(ctx, d, time.Now()); err != nil {
+			return fmt.Errorf("打开数据库后的一致性补齐失败：%w", err)
+		}
+	}
+	return nil
+}
+
 // Migrate 按序号执行未执行过的迁移，记录在 schema_migrations；每个迁移一个事务（含登记的 Go 钩子）。
 func (d *DB) Migrate(ctx context.Context) error {
 	if _, err := d.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT NOT NULL PRIMARY KEY, applied_at TEXT NOT NULL)`); err != nil {

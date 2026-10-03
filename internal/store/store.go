@@ -36,6 +36,7 @@ func dsn(path string) string {
 }
 
 // Open 打开（不存在则创建）数据库并执行待执行的迁移；有待执行迁移且库非空时先备份（保留最近 3 份）。
+// 迁移之后运行登记的打开钩子（RegisterOpenHook）。
 func Open(path string) (*DB, error) {
 	drv := &sqlite.Driver{}
 	if err := registerUnicodeFunctions(drv); err != nil {
@@ -48,6 +49,10 @@ func Open(path string) (*DB, error) {
 	}
 	d := &DB{DB: db, Path: path}
 	if err := d.Migrate(context.Background()); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := d.runOpenHooks(context.Background()); err != nil {
 		db.Close()
 		return nil, err
 	}

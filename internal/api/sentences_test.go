@@ -331,6 +331,45 @@ func TestBooksImportWithTexts(t *testing.T) {
 	if len(items) != 1 || items[0].(map[string]any)["kind"] != "text" {
 		t.Errorf("只有课文的单元 = %v", items)
 	}
+
+	// 同一份内容再导入到这本词书（补一个词）：已有的篇不重复创建，句子数不变；内容不同的篇照常新建
+	count := func(table string) int {
+		var n int
+		if err := e.d.DB.QueryRow(`SELECT count(*) FROM "` + table + `"`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	textsBefore, sentencesBefore := count("UnitText"), count("Sentence")
+	again := okData(t, e.do("POST", "/api/books/import", jsonBody(map[string]any{
+		"bookId": res["bookId"],
+		"units": []any{
+			map[string]any{"name": "Unit 1", "entries": []any{map[string]any{"spelling": "guitar", "definition": "吉他"}, map[string]any{"spelling": "piano", "definition": "钢琴"}},
+				"texts": []any{map[string]any{"title": "重点句型", "kind": "list", "sentences": []any{map[string]any{"en": "I play the guitar.", "cn": "我弹吉他。"}}}}},
+			map[string]any{"name": "Unit 2", "entries": []any{},
+				"texts": []any{
+					map[string]any{"title": "Music", "kind": "text", "sentences": []any{map[string]any{"en": "Music is fun.", "cn": "音乐很有趣。"}}},
+					map[string]any{"title": "Music", "kind": "text", "sentences": []any{map[string]any{"en": "Music is fun.", "cn": "音乐很有趣。"}}},
+				}},
+		},
+	}), h))
+	if again["unitsCreated"].(float64) != 0 || again["wordsCreated"].(float64) != 1 {
+		t.Errorf("再次导入 = %v", again)
+	}
+	if _, ok := again["texts"]; ok {
+		t.Errorf("再次导入不应新建篇：%v", again)
+	}
+	if count("UnitText") != textsBefore || count("Sentence") != sentencesBefore {
+		t.Errorf("再次导入后篇 %d→%d、句子 %d→%d", textsBefore, count("UnitText"), sentencesBefore, count("Sentence"))
+	}
+	changed := okData(t, e.do("POST", "/api/books/import", jsonBody(map[string]any{
+		"bookId": res["bookId"],
+		"units": []any{map[string]any{"name": "Unit 2", "entries": []any{},
+			"texts": []any{map[string]any{"title": "Music", "kind": "text", "sentences": []any{map[string]any{"en": "Music is great.", "cn": "音乐很棒。"}}}}}},
+	}), h))
+	if changed["texts"].(float64) != 1 || count("UnitText") != textsBefore+1 {
+		t.Errorf("内容不同的篇应新建：%v", changed)
+	}
 }
 
 func TestWordSentencesAndAnalyze(t *testing.T) {
