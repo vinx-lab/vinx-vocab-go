@@ -667,7 +667,7 @@ type RewriteOptions struct {
 	En     string
 	Cn     string
 	Issues []string
-	Unit   *UnitRow // 单元相关的句子：已知词按单元；否则按操作者自己的学习记录
+	Unit   *UnitRow // 单元相关的句子：已知词按单元；没有单元时见 rewriteKnownWords
 	Origin string   // 仿写的原句
 	Target string   // 例句的目标词
 }
@@ -679,6 +679,22 @@ type RewriteResult struct {
 	Frame  *string               `json:"frame,omitempty"`
 	Level  coreai.Level          `json:"level"`
 	Checks coreai.SentenceChecks `json:"checks"`
+}
+
+// rewriteKnownWords 重写后超纲检查用的已知词：
+//   - 带单元：按单元（本书到这个单元为止的词）；
+//   - 不带单元的短文（学生自己的短文）：按操作者自己的学习记录；
+//   - 不带单元的其他类型（例句、句型、仿写）：返回 nil，不做超纲检查——操作者通常是老师，
+//     没有学习记录，按他的记录算会把句中每个词都标成超纲。
+func rewriteKnownWords(ctx context.Context, q store.Querier, actorID string, o RewriteOptions) (map[string]bool, error) {
+	switch {
+	case o.Unit != nil:
+		return KnownWordsUpToUnit(ctx, q, o.Unit.ID)
+	case o.Kind == coreai.PromptPassage:
+		return KnownWordsOfLearner(ctx, q, actorID)
+	default:
+		return nil, nil
+	}
 }
 
 // RewriteSentence POST /ai/sentences/rewrite：把这句和标出的问题一起发给 AI，只返回重写后的这一句（不写库）。
@@ -710,12 +726,7 @@ func RewriteSentence(ctx context.Context, q store.Querier, cfg coreai.CallConfig
 	if err != nil {
 		return RewriteResult{}, err
 	}
-	var known map[string]bool
-	if o.Unit != nil {
-		known, err = KnownWordsUpToUnit(ctx, q, o.Unit.ID)
-	} else {
-		known, err = KnownWordsOfLearner(ctx, q, actorID)
-	}
+	known, err := rewriteKnownWords(ctx, q, actorID, o)
 	if err != nil {
 		return RewriteResult{}, err
 	}

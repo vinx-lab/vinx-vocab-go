@@ -97,7 +97,7 @@ func FillPlaceholders(template string, level Level) string {
 }
 
 // bookNameLevels 内置词书（及从服务器版导入的同名词书）的书名 → 学段。
-// 迁移 0004_book_level.sql 里的回填名单与此一致。
+// 迁移 0004_book_level.sql 里的回填名单与此一致；从服务器版导入后由 service.RepairBookLevels 按此回填。
 var bookNameLevels = map[string]Level{
 	"七年级上册":  LevelJunior,
 	"七年级下册":  LevelJunior,

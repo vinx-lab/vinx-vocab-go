@@ -213,6 +213,9 @@ func (b *variantSaveBody) Validate(v *httpx.V) {
 	b.sentences = validateDraftSentences(v, b.Sentences, true)
 }
 
+// rewriteBody POST /ai/sentences/rewrite 的请求体：{ en, cn?, issues?, level?, kind, unitId?, origin?, target? }。
+// unitId 可选：带上时按单元算已知词做超纲检查；不带时，kind=passage 按操作者自己的学习记录，
+// 其他类型（例句、句型、仿写）不做超纲检查（返回的 checks.outOfScope 为空），其余检查照常。
 type rewriteBody struct {
 	En     httpx.Opt[string]   `json:"en"`
 	Cn     httpx.Opt[string]   `json:"cn"`

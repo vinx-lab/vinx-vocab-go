@@ -521,6 +521,14 @@ func TestRewriteSentence(t *testing.T) {
 	if !strings.Contains(f.last().User, "仿写的原句：I find making word cards useful.") {
 		t.Errorf("user = %q", f.last().User)
 	}
+	// 不带单元的句型 / 仿写：不做超纲检查（老师没有学习记录，按他的记录算会全部超纲）
+	f.set(func(string, string) string { return `{"en":"I find English useful.","cn":"我觉得英语有用。"}` })
+	for _, kind := range []string{"pattern", "variant"} {
+		r = okData(t, e.do("POST", "/api/ai/sentences/rewrite", jsonBody(map[string]any{"en": "x", "kind": kind, "level": "primary"}), h))
+		if c := r["checks"].(map[string]any); len(strList(c["outOfScope"])) != 0 || c["maxWords"].(float64) != 12 {
+			t.Errorf("%s 不带单元 checks = %v", kind, c)
+		}
+	}
 	// 校验与权限
 	for _, bad := range []string{`{"en":"","kind":"pattern"}`, `{"en":"x","kind":"bogus"}`, `{"en":"x","kind":"pattern","level":"senior"}`, `{"en":"x"}`} {
 		if r := e.do("POST", "/api/ai/sentences/rewrite", bad, h); r.Status != 400 {
@@ -531,8 +539,9 @@ func TestRewriteSentence(t *testing.T) {
 	if r := e.do("POST", "/api/ai/sentences/rewrite", `{"en":"x","kind":"pattern"}`, student); r.Status != 403 {
 		t.Errorf("学生重写句型 = %d", r.Status)
 	}
-	if r := e.do("POST", "/api/ai/sentences/rewrite", `{"en":"I run.","cn":"我跑。","kind":"passage"}`, student); r.Status != 200 {
-		t.Errorf("学生重写短文句 = %d %s", r.Status, errCode(r))
+	// 不带单元的短文句：按学生自己的学习记录（还没学过 → 句中词库里的词算超纲）
+	if r := okData(t, e.do("POST", "/api/ai/sentences/rewrite", `{"en":"I run.","cn":"我跑。","kind":"passage"}`, student)); !slices.Contains(strList(r["checks"].(map[string]any)["outOfScope"]), "English") {
+		t.Errorf("学生重写短文句 checks = %v", r["checks"])
 	}
 	other := signupRole(t, e, "rw-other@x.test", "teacher")
 	if r := e.do("POST", "/api/ai/sentences/rewrite", jsonBody(map[string]any{"en": "x", "kind": "pattern", "unitId": unitID}), other); r.Status != 403 {
