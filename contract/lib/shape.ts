@@ -62,6 +62,8 @@ const SHAPES_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "shapes")
  */
 export function expectShape(name: string, value: unknown) {
   const file = join(SHAPES_DIR, `${name}.json`);
+  const added = TARGET === "go" ? GO_ADDED[name] : undefined;
+  if (added && process.env.UPDATE_SHAPES !== "1") value = stripAdded(name, value, added);
   const actual = shapeOf(value);
   if (TARGET === "oracle" || process.env.UPDATE_SHAPES === "1") {
     mkdirSync(dirname(file), { recursive: true });
@@ -71,4 +73,65 @@ export function expectShape(name: string, value: unknown) {
   if (!existsSync(file)) throw new Error(`缺少结构快照 ${name}：先对 oracle 跑一遍契约测试`);
   const expected = JSON.parse(readFileSync(file, "utf8"));
   expect(actual, `结构与 oracle 不一致：${name}`).toEqual(expected);
+}
+
+/**
+ * Go 版在 oracle 快照之外新增的字段（ADR 0004：单文件版为准，响应只增字段时，与 oracle 快照比对忽略新增字段）。
+ *
+ * 路径以响应体为根，用 `.` 分隔，`[]` 表示数组的每个元素，例如 `data.members[].coverage`。
+ * Go 上比对前：先断言路径上的每个对象都带着这个键（新字段必须出现，值的含义由 Go 专属用例断言），
+ * 再把它从响应里去掉，其余字段照常与 oracle 快照逐项全等比对。快照文件本身不改。
+ */
+const GO_ADDED: Record<string, string[]> = {
+  // spec 0002：开发模式开关
+  config: ["data.dev"],
+  // spec 0003：班级概览成员的目标覆盖
+  "class-overview": ["data.students[].coverage"],
+  "class-overview-empty": ["data.students[].coverage"],
+  // spec 0006：今日页今天已批改的默写单；单词单的格式与题目
+  "today-empty": ["data.gradedSheets"],
+  today: ["data.gradedSheets"],
+  "today-with-sheet": ["data.gradedSheets", "data.sheet.format", "data.sheet.itemCount"],
+  "sheets-detail": ["data.format", "data.grading", "data.items"],
+  "sheets-list": ["data.items[].format", "data.items[].itemCount"],
+  "sheets-sources": ["data.learningSentences"],
+  // spec 0005：词书学段、AI 预览的学段、逐句检查标记
+  "books-create-raw": ["data.level"],
+  "books-list": ["items[].level"],
+  "books-detail": ["data.level"],
+  "ai-example-preview": ["data.level"],
+  "ai-passage-preview": ["data.level"],
+  "ai-job-example-done": ["result.level", "result.items[].checks"],
+  "ai-job-examples-done": ["result.level", "result.items[].checks"],
+  // spec 0004 / 0005：短文逐句（句子、学段、检查标记）
+  "ai-job-passage-done": ["result.level", "result.sentences"],
+  "ai-passage-detail": ["data.sentences"],
+};
+
+function stripAdded(name: string, value: unknown, paths: string[]): unknown {
+  const copy = structuredClone(value);
+  for (const path of paths) {
+    const segs = path.split(".");
+    const visit = (node: unknown, i: number, at: string) => {
+      const seg = segs[i];
+      const isArr = seg.endsWith("[]");
+      const key = isArr ? seg.slice(0, -2) : seg;
+      expect(node !== null && typeof node === "object" && !Array.isArray(node), `${name}：${at} 不是对象`).toBe(true);
+      const obj = node as Record<string, unknown>;
+      expect(Object.hasOwn(obj, key), `${name}：Go 应带新增字段 ${at}${key}`).toBe(true);
+      if (i === segs.length - 1) {
+        delete obj[key];
+        return;
+      }
+      if (isArr) {
+        const arr = obj[key];
+        expect(Array.isArray(arr), `${name}：${at}${key} 不是数组`).toBe(true);
+        (arr as unknown[]).forEach((el, j) => visit(el, i + 1, `${at}${key}[${j}].`));
+      } else if (obj[key] !== null) {
+        visit(obj[key], i + 1, `${at}${key}.`);
+      }
+    };
+    visit(copy, 0, "");
+  }
+  return copy;
 }

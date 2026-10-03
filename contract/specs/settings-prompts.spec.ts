@@ -5,9 +5,21 @@
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { anon, login, STAMP } from "../lib/client";
-import { ready } from "../lib/areas";
+import { goOnly, ready } from "../lib/areas";
 
 const CUSTOM = `契约测试模板：例句不超过 8 个词，场景都放在运动会上 ${STAMP}`;
+
+/**
+ * 预览里的可见提示词以默认模板开头。
+ * Go（spec 0005）：默认模板带 {学段}、{句长} 等占位符，预览时按学段替换成具体文字，
+ * 所以每个占位符匹配一段不含换行的文字，其余文字逐字比对，且预览里不能残留未替换的占位符。
+ */
+function startsWithTemplate(prompt: string, template: string): boolean {
+  if (!goOnly) return prompt.startsWith(template);
+  const escaped = template.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = escaped.replace(/\\\{[^{}\n]+?\\\}/g, "[^\\n]+?");
+  return new RegExp(`^${pattern}`).test(prompt) && !/\{[^{}\n]+\}/.test(prompt);
+}
 
 describe.runIf(ready("settings"))("系统设置 · AI 提示词模板", () => {
   afterAll(async () => {
@@ -78,7 +90,7 @@ describe.runIf(ready("settings"))("系统设置 · AI 提示词模板", () => {
     const defaultPreview = await admin.post(`/ai/words/${wordId}/example/preview`);
     expect(defaultPreview.status).toBe(200);
     const defaults = await admin.get("/settings/ai/prompts");
-    expect(defaultPreview.body.data.prompt.startsWith(defaults.body.data.example.defaultText)).toBe(true);
+    expect(startsWithTemplate(defaultPreview.body.data.prompt, defaults.body.data.example.defaultText)).toBe(true);
 
     const saved = await admin.put("/settings/ai/prompts", { example: `  ${CUSTOM}\n` });
     expect(saved.status).toBe(200);
@@ -89,6 +101,6 @@ describe.runIf(ready("settings"))("系统设置 · AI 提示词模板", () => {
     const reset = await admin.del("/settings/ai/prompts/example");
     expect(reset.status).toBe(200);
     const backToDefault = await admin.post(`/ai/words/${wordId}/example/preview`);
-    expect(backToDefault.body.data.prompt.startsWith(defaults.body.data.example.defaultText)).toBe(true);
+    expect(startsWithTemplate(backToDefault.body.data.prompt, defaults.body.data.example.defaultText)).toBe(true);
   });
 });
