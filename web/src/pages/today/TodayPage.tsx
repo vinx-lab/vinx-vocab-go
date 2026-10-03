@@ -3,7 +3,8 @@ import { Link, useNavigate } from "@/lib/router";
 import { useQuery, useQueryClient } from "@/lib/query";
 import { useIdentity } from "@/lib/auth";
 import { Button, Col, Row, Tag, useApp } from "@/ui";
-import { CheckCircleFilled, FireFilled, PlayCircleFilled, PlusOutlined, PrinterOutlined, ThunderboltOutlined } from "@/ui";
+import { CheckCircleFilled, EditOutlined, FireFilled, PlayCircleFilled, PlusOutlined, PrinterOutlined, ThunderboltOutlined } from "@/ui";
+import { gradeLink, todaySheetTitle } from "@/pages/sheets/dictation";
 import { api, errorMessage } from "@/lib/api";
 import { can } from "@/lib/perms";
 import { EmptyBlock, ErrorBlock, Loading, PageHeader, StatTile } from "@/components/ui";
@@ -156,7 +157,46 @@ export function TodayPage() {
         </div>
       )}
 
-      {t.sheet && (
+      {t.sheet && t.sheet.format === "dictation" && (
+        <div className="vx-card vx-rise" style={{ marginTop: 20, padding: "16px 18px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <EditOutlined style={{ fontSize: 24, color: "var(--primary)" }} />
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <div style={{ fontWeight: 600 }}>
+              {todaySheetTitle(t.sheet)}
+              {t.sheet.remaining > 0 && `（还有 ${t.sheet.remaining} 份待完成）`}
+            </div>
+            <div style={{ color: "var(--muted)", fontSize: 13 }}>纸上默写完了吗？对照答案页逐题批改，错的词和句子会进「要学」。</div>
+          </div>
+          <Link to={gradeLink(t.sheet.id)}>
+            <Button type="primary">批改</Button>
+          </Link>
+        </div>
+      )}
+
+      {(t.gradedSheets ?? []).map((g) => (
+        <div key={g.id} className="vx-card vx-rise" style={{ marginTop: 20, padding: "16px 18px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <CheckCircleFilled style={{ fontSize: 24, color: "var(--good)" }} />
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <div style={{ fontWeight: 600 }}>
+              默写单 #{g.seq} · 已批改
+              {g.selfGraded && (
+                <Tag color="orange" bordered={false} style={{ marginLeft: 8 }}>
+                  自批
+                </Tag>
+              )}
+            </div>
+            <div style={{ color: "var(--muted)", fontSize: 13 }}>
+              成绩 {g.correct}/{g.total}
+              {g.correct < g.total ? "，错的词和句子已经进了「要学」。" : "，全对！"}
+            </div>
+          </div>
+          <Link to={gradeLink(g.id)}>
+            <Button>查看成绩</Button>
+          </Link>
+        </div>
+      ))}
+
+      {t.sheet && t.sheet.format !== "dictation" && (
         <div className="vx-card vx-rise" style={{ marginTop: 20, padding: "16px 18px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <PrinterOutlined style={{ fontSize: 24, color: "var(--primary)" }} />
           <div style={{ flex: 1, minWidth: 180 }}>

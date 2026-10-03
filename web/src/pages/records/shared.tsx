@@ -2,8 +2,8 @@ import type { ComponentChildren, JSX } from "preact";
 import { Tag } from "@/ui";
 import { CheckCircleFilled, CloseCircleFilled } from "@/ui";
 import dayjs from "dayjs";
-import type { Mode } from "@/types";
-import { MODE_LABEL } from "@/types";
+import type { AnswerMode } from "@/types";
+import { ANSWER_MODE_LABEL } from "@/types";
 
 /** 给 URL 追加 ?userId=（查看他人记录时） */
 export function withUser(path: string, userId?: string): string {
@@ -54,7 +54,7 @@ export function AnswerChip({
   dontKnow,
   prefix,
 }: {
-  mode: Mode;
+  mode: AnswerMode;
   correct: boolean | null;
   userAnswer: string | null;
   hintUsed: boolean;
@@ -76,7 +76,7 @@ export function AnswerChip({
       }}
     >
       {prefix}
-      <span style={{ color: "var(--ink-soft)" }}>{MODE_LABEL[mode] ?? mode}</span>
+      <span style={{ color: "var(--ink-soft)" }}>{ANSWER_MODE_LABEL[mode] ?? mode}</span>
       <ResultMark correct={correct} />
       {dontKnow ? (
         <span style={{ color: "var(--ink-soft)", fontWeight: 600 }}>不会</span>

@@ -34,6 +34,7 @@ const PassageDetailPage = lazy(() => import("@/pages/passages/PassageDetailPage"
 const SheetsPage = lazy(() => import("@/pages/sheets/SheetsPage").then((m) => m.SheetsPage));
 const SheetPrintPage = lazy(() => import("@/pages/sheets/SheetPrintPage").then((m) => m.SheetPrintPage));
 const SheetNewPage = lazy(() => import("@/pages/sheets/SheetNewPage").then((m) => m.SheetNewPage));
+const SheetGradePage = lazy(() => import("@/pages/sheets/SheetGradePage").then((m) => m.SheetGradePage));
 const WordsPage = lazy(() => import("@/pages/records/WordsPage").then((m) => m.WordsPage));
 const WordHistoryPage = lazy(() => import("@/pages/records/WordHistoryPage").then((m) => m.WordHistoryPage));
 const ClassesPage = lazy(() => import("@/pages/school/classes/ClassesPage").then((m) => m.ClassesPage));
@@ -62,6 +63,7 @@ export const ROUTES: RouteDef[] = [
   { path: "/passages/:id", component: PassageDetailPage, cap: "study" },
   { path: "/sheets", component: SheetsPage, cap: "study" },
   { path: "/sheets/new", component: SheetNewPage, cap: "study" },
+  { path: "/sheets/:id/grade", component: SheetGradePage, cap: "study" },
   { path: "/words", component: WordsPage, cap: "study" },
   { path: "/words/:wordId", component: WordHistoryPage, cap: "study" },
   { path: "/classes", component: ClassesPage, cap: "classes", feature: "classes" },

@@ -4,10 +4,11 @@ import { useQuery } from "@/lib/query";
 import { useIdentity } from "@/lib/auth";
 import { Link, useNavigate, useParams } from "@/lib/router";
 import { api } from "@/lib/api";
-import type { SessionRecordDetail } from "@/types";
-import { MODE_LABEL, RATING_LABEL } from "@/types";
+import type { AnswerMode, SessionRecordDetail } from "@/types";
+import { ANSWER_MODE_LABEL, RATING_LABEL } from "@/types";
 import { EmptyBlock, ErrorBlock, KindTag, Loading, PageHeader, SpeakButton, StatTile, formatDuration, percent } from "@/components/ui";
-import { AnswerChip, PHASE_LABEL, fmtDate, fmtDateTime, withUser } from "./shared";
+import { DICT_TYPE_LABEL, dictationScore } from "@/pages/sheets/dictation";
+import { AnswerChip, PHASE_LABEL, ResultMark, fmtDate, fmtDateTime, withUser } from "./shared";
 
 const RATING_KEYS: { key: string; label: string }[] = [
   { key: "again", label: "忘记" },
@@ -49,6 +50,8 @@ export function SessionRecordPage() {
   const isSelf = identity?.id === s.user.id;
   const viewUserId = isSelf ? undefined : s.user.id;
   const durationMs = r?.durationMs ?? (s.completedAt ? new Date(s.completedAt).getTime() - new Date(s.startedAt).getTime() : 0);
+  const dict = s.format === "dictation";
+  const sentences = s.sentences ?? [];
 
   return (
     <div className="vx-page">
@@ -58,12 +61,25 @@ export function SessionRecordPage() {
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <KindTag kind={s.kind} />
             {s.planName ?? "不限计划"}
+            {s.selfGraded && (
+              <Tag color="orange" bordered={false}>
+                自批
+              </Tag>
+            )}
           </span>
         }
         extra={back}
       >
-        {fmtDateTime(s.startedAt)}
-        {s.completedAt ? ` — ${fmtDateTime(s.completedAt)}` : ""} · 用时 {formatDuration(durationMs)} · {s.modes.map((m) => MODE_LABEL[m]).join(" + ")}
+        {dict ? (
+          <>
+            {s.gradedBy?.name ?? "—"} 批改 · {fmtDateTime(s.completedAt)}
+          </>
+        ) : (
+          <>
+            {fmtDateTime(s.startedAt)}
+            {s.completedAt ? ` — ${fmtDateTime(s.completedAt)}` : ""} · 用时 {formatDuration(durationMs)} · {s.modes.map((m) => ANSWER_MODE_LABEL[m as AnswerMode] ?? m).join(" + ")}
+          </>
+        )}
         {s.status === "active" && (
           <Tag color="blue" bordered={false} style={{ marginLeft: 8 }}>
             进行中
@@ -76,7 +92,11 @@ export function SessionRecordPage() {
           <StatTile label="词数" value={r?.words ?? s.words.length} suffix="词" />
         </Col>
         <Col xs={12} sm={6}>
-          <StatTile label="首答正确率" value={percent(r?.accuracy)} tone="primary" hint={r ? `首答 ${r.correctFirst}/${r.totalFirst} 题` : "尚未完成"} />
+          {dict && r ? (
+            <StatTile label="默写成绩" value={`${dictationScore(r).correct}/${dictationScore(r).total}`} tone="primary" hint={r.sentences ? `其中句子 ${r.sentences.correct}/${r.sentences.total} 题` : undefined} />
+          ) : (
+            <StatTile label="首答正确率" value={percent(r?.accuracy)} tone="primary" hint={r ? `首答 ${r.correctFirst}/${r.totalFirst} 题` : "尚未完成"} />
+          )}
         </Col>
         <Col xs={12} sm={6}>
           <StatTile label="新学入库" value={r?.newLearned ?? 0} suffix="词" tone="accent" />
@@ -96,7 +116,7 @@ export function SessionRecordPage() {
       </Row>
 
       {s.words.length === 0 ? (
-        <EmptyBlock title="这一组没有单词" />
+        sentences.length === 0 && <EmptyBlock title="这一组没有单词" />
       ) : (
         <div className="vx-card" style={{ padding: "4px 16px" }}>
           {s.words.map((w, i) => {
@@ -144,6 +164,31 @@ export function SessionRecordPage() {
             );
           })}
         </div>
+      )}
+
+      {sentences.length > 0 && (
+        <>
+          <div className="vx-eyebrow" style={{ margin: "18px 0 8px" }}>句子题</div>
+          <div className="vx-card" style={{ padding: "4px 16px" }}>
+            {sentences.map((x, i) => (
+              <div key={x.sentenceId} style={{ padding: "12px 0", borderTop: i ? "1px solid var(--line)" : "none", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="vx-cn" style={{ color: "var(--ink-soft)" }}>
+                    <Tag bordered={false} style={{ marginRight: 6 }}>{DICT_TYPE_LABEL[x.type] ?? x.type}</Tag>
+                    {x.prompt}
+                  </div>
+                  <div className="vx-word" style={{ fontWeight: 600, marginTop: 2 }}>{x.en}</div>
+                  {!x.correct && x.userAnswer && (
+                    <div style={{ fontSize: 13, color: "var(--bad)", marginTop: 2 }}>
+                      学生写的：<span className="vx-word">{x.userAnswer}</span>
+                    </div>
+                  )}
+                </div>
+                <ResultMark correct={x.correct} style={{ flexShrink: 0 }} />
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

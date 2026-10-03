@@ -276,11 +276,67 @@ html:has(.vx-print-scope) body { background: #e8e8e8; }
 .vx-sheet-fold { height: 100%; border-left: 1px dashed #000; }
 .vx-sheet-cn { padding-left: 4mm; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
+/* ============ 默写单打印（spec 0006）============
+ * 题目页 + 答案页；没有折线。题目页每题左侧中文提示、右侧书写区：单词、短语两题一行（左右两栏），
+ * 句子提示在上、书写区占整行（太长占两行）。行高与 dictation.ts 的 ROW_H 一致：横线 8mm，四线三格 13mm。
+ * 书写线用边框画（浏览器默认不打印背景图）。
+ */
+.vx-sheet-page.vx-dict-page::before, .vx-sheet-page.vx-dict-page::after { content: none; }
+.vx-dict-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 4mm; border-bottom: 1.5px solid #000; height: 12mm; box-sizing: border-box; padding-bottom: 1.5mm; margin-bottom: 2mm; }
+.vx-dict-head strong { font-size: 13pt; }
+.vx-dict-meta { display: flex; gap: 5mm; font-size: 10pt; align-items: baseline; white-space: nowrap; }
+.vx-dict-score { display: inline-block; width: 16mm; border-bottom: 1px solid #000; }
+.vx-dict-title { height: 7mm; display: flex; align-items: flex-end; font-weight: 700; font-size: 11pt; padding-bottom: 1mm; box-sizing: border-box; }
+.vx-dict-row { display: grid; grid-template-columns: 1fr 1fr; column-gap: 6mm; height: var(--dict-row); align-items: end; }
+.vx-dict-row.is-full { grid-template-columns: 1fr; }
+.vx-dict-cell { display: grid; align-items: end; column-gap: 2mm; min-width: 0; height: 100%; }
+.vx-dict-cell.tier-word { grid-template-columns: 7mm minmax(0, 1fr) 42mm; }
+.vx-dict-cell.tier-phrase { grid-template-columns: 7mm minmax(0, 1fr) 52mm; }
+.vx-dict-cell.tier-line, .vx-dict-cell.tier-double { grid-template-columns: 7mm 62mm minmax(0, 1fr); }
+.vx-dict-no { color: #444; font-size: 9pt; padding-bottom: 1mm; }
+.vx-dict-prompt { font-size: 10.5pt; line-height: 4.4mm; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; padding-bottom: 0.8mm; }
+/* 横线行高 8mm：单词、短语的提示只排一行（分页按一行行高预算）；四线三格 13mm 可以两行 */
+.vx-dict-lines-line .vx-dict-cell .vx-dict-prompt { -webkit-line-clamp: 1; }
+.vx-dict-sentence { display: grid; grid-template-columns: 7mm minmax(0, 1fr); }
+.vx-dict-sentence .vx-dict-prompt { -webkit-line-clamp: 3; line-height: 4.6mm; padding: 0.6mm 0 0; }
+.vx-dict-sentence .vx-dict-no { padding: 0.6mm 0 0; }
+.vx-dict-sentence .vx-dict-writes { grid-column: 2; }
+/* 横线：一条底边 */
+.vx-dict-w { height: var(--dict-row); box-sizing: border-box; }
+.vx-dict-lines-line .vx-dict-w { border-bottom: 0.6px solid #000; }
+/* 四线三格：外框上下两条 + 中间两条（第三条为基线，加深） */
+.vx-dict-lines-fourline .vx-dict-w { position: relative; }
+.vx-dict-lines-fourline .vx-dict-w::before { content: ""; position: absolute; left: 0; right: 0; bottom: 1mm; height: 9mm; box-sizing: border-box; border-top: 0.5px solid #555; border-bottom: 0.5px solid #555; }
+.vx-dict-lines-fourline .vx-dict-w::after { content: ""; position: absolute; left: 0; right: 0; bottom: 4mm; height: 3mm; box-sizing: border-box; border-top: 0.5px solid #555; border-bottom: 0.9px solid #000; }
+.vx-dict-foot { position: absolute; left: 12mm; right: 12mm; bottom: 12mm; height: 6mm; display: flex; justify-content: space-between; align-items: flex-end; font-size: 8.5pt; color: #444; }
+/* 答案页：两栏紧凑排列 */
+.vx-dict-answers { column-count: 2; column-gap: 8mm; column-fill: auto; height: calc(297mm - 24mm - 14mm); font-size: 10pt; line-height: 4.2mm; }
+.vx-dict-answer { break-inside: avoid; padding-bottom: 0.8mm; }
+.vx-dict-answer b { display: inline-block; min-width: 7mm; color: #444; font-weight: 400; }
+.vx-sheet-toolbar .vx-dict-opt { display: inline-flex; align-items: center; gap: 6px; }
+/* 不打印答案页时，屏幕上把答案页调淡，打印时隐藏 */
+.vx-dict-noanswers .vx-dict-answer-page { opacity: 0.35; }
+
+/* 默写单批改页：整行可点，点击区域不小于 48px */
+.vx-grade-item { padding: 0; overflow: hidden; }
+.vx-grade-item.is-wrong { border-color: var(--bad); background: var(--bad-soft); }
+.vx-grade-toggle { all: unset; box-sizing: border-box; width: 100%; min-height: 56px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.vx-grade-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.vx-grade-no { width: 24px; flex-shrink: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
+.vx-grade-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.vx-grade-prompt { color: var(--ink-soft); }
+.vx-grade-answer { font-weight: 600; font-size: 17px; color: var(--ink); overflow-wrap: anywhere; }
+.vx-grade-mark { flex-shrink: 0; min-width: 56px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border-radius: 18px; color: var(--good); background: var(--good-soft); font-weight: 600; }
+.vx-grade-item.is-wrong .vx-grade-mark { color: #fff; background: var(--bad); }
+.vx-grade-bar { position: sticky; bottom: 0; background: var(--paper); padding: 12px 0; margin-top: 12px; display: flex; gap: 12px; align-items: center; border-top: 1px solid var(--line); }
+
 @media print {
   @page { size: A4; margin: 0; }
+  .vx-dict-noanswers .vx-dict-answer-page { display: none !important; }
   html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
   .vx-noprint { display: none !important; }
   .vx-sheet-root { min-height: 0; padding: 0; background: #fff; }
-  .vx-sheet-page { margin: 0; box-shadow: none; page-break-after: always; break-after: page; }
-  .vx-sheet-page:last-child { page-break-after: auto; break-after: auto; }
+  .vx-sheet-page { margin: 0; box-shadow: none; }
+  /* 每页从新的一张纸开始：用「后一页之前分页」，隐藏答案页时最后一张题目页之后不会多出空白页 */
+  .vx-sheet-page + .vx-sheet-page { page-break-before: always; break-before: page; }
 }

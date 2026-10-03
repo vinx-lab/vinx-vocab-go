@@ -10,6 +10,7 @@ import { KIND_LABEL } from "@/types";
 import { EmptyBlock, ErrorBlock, KindTag, Loading, StatTile, percent } from "@/components/ui";
 import { DailyWordsChart, MasteryBar } from "@/components/charts";
 import { CoverageSection } from "@/pages/coverage/components";
+import { dictationScore } from "@/pages/sheets/dictation";
 import { fmtDay, fmtTime, withUser } from "./shared";
 
 const PAGE_SIZE = 20;
@@ -183,13 +184,25 @@ function SessionRow({ item, userId }: { item: SessionListItem; userId?: string }
               进行中
             </Tag>
           )}
+          {item.selfGraded && (
+            <Tag color="orange" bordered={false}>
+              自批
+            </Tag>
+          )}
         </div>
         <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-          {fmtDay(item.dayKey)} {fmtTime(item.startedAt)} · {item.words} 词 · {item.answers} 题
+          {fmtDay(item.dayKey)} {fmtTime(item.startedAt)} · {item.words} 词 · {item.answers}{item.format === "dictation" && r?.sentences ? ` + ${r.sentences.total}` : ""} 题
         </div>
       </div>
       <div style={{ textAlign: "right", flexShrink: 0 }}>
-        {r ? (
+        {r && item.format === "dictation" ? (
+          <>
+            <div className="vx-num" style={{ fontSize: 18, fontWeight: 600 }}>
+              {dictationScore(r).correct}/{dictationScore(r).total}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>默写成绩</div>
+          </>
+        ) : r ? (
           <>
             <div className="vx-num" style={{ fontSize: 18, fontWeight: 600 }}>
               {percent(r.accuracy)}

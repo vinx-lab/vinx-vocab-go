@@ -3,6 +3,8 @@
  */
 
 export type Mode = "recognition" | "spelling" | "cloze";
+/** 作答记录里的题型：在线测试的三种，加上默写单批改（spec 0006） */
+export type AnswerMode = Mode | "dictation";
 export type SessionKind = "learn" | "review" | "test" | "drill" | "sheet";
 export type PlanKind = "daily" | "test";
 export type PlanStatus = "active" | "paused" | "archived";
@@ -52,6 +54,8 @@ export interface TodayData {
   drillAvailable: number;
   /** 只给下一份（进行中的优先，否则编号最小的未测单子） */
   sheet: TodaySheet | null;
+  /** 今天批改提交的默写单（spec 0006，今日页显示「已批改」） */
+  gradedSheets?: TodayGradedSheet[];
   streak: number;
   learnedWords: number;
   stats: { newWords: number; reviewedWords: number; answers: number; minutes: number; newLeft: number; reviewLeft: number; pendingTests: number };
@@ -97,6 +101,96 @@ export interface SheetCandidate {
   definition: string;
   score: number;
   reasons: SheetReason[];
+  /** 默写单预览才有：单词 / 短语（spec 0006） */
+  type?: "word" | "phrase";
+}
+
+// ---------------- 默写单（spec 0006） ----------------
+
+/** 单词单格式：对折自测表 / 默写单 */
+export type SheetFormat = "selftest" | "dictation";
+/** 默写单题型 */
+export type DictItemType = "word" | "phrase" | "sentence" | "frame" | "transform";
+/** 句子在默写里的状态：未测 / 要学 / 会了 */
+export type SentenceDictStatus = "untested" | "learning" | "known";
+
+/** 默写单的句子来源 */
+export type SentenceSource =
+  | { kind: "text"; textId: string }
+  | { kind: "learning" }
+  | { kind: "passage"; passageId: string }
+  | { kind: "session"; sessionId: string };
+
+/** GET /sheets/sources?unitId= 里单元的一篇 */
+export interface SheetSourceText {
+  id: string;
+  /** list 句型清单（含仿写）| text 课文 */
+  kind: "list" | "text";
+  title: string;
+  titleCn: string | null;
+  sentenceCount: number;
+  variantCount: number;
+}
+
+/** GET /sheets/sources */
+export interface SheetSourcesData {
+  sessions: SheetSourceSession[];
+  learningSentences?: number;
+  texts?: SheetSourceText[];
+}
+
+/** 默写单预览里的一个句子 */
+export interface DictSentenceCandidate {
+  sentenceId: string;
+  type: "sentence" | "frame" | "transform";
+  en: string;
+  cn: string;
+  frame: string | null;
+  prompt: string;
+  answer: string;
+  status: SentenceDictStatus;
+}
+
+/** POST /sheets/preview 的返回（默写单才有 sentences） */
+export interface SheetPreviewData {
+  items: SheetCandidate[];
+  sentences?: DictSentenceCandidate[];
+}
+
+/** 默写单明细里的一道题；index 是在 items 里的下标（批改按它提交） */
+export interface DictItemView {
+  index: number;
+  type: DictItemType;
+  /** 1 单词、2 短语、3 句子、4 仿写与转换 */
+  section: number;
+  wordId?: string;
+  sentenceId?: string;
+  prompt: string;
+  answer: string;
+  cn?: string;
+  origin?: { id: string; en: string; cn: string };
+}
+
+/** 默写单的批改结果（成绩单） */
+export interface SheetGrading {
+  sessionId: string;
+  gradedAt: string | null;
+  gradedBy: { id: string; name: string };
+  selfGraded: boolean;
+  correct: number;
+  total: number;
+  results: { index: number; correct: boolean; userAnswer: string | null }[];
+}
+
+export interface TodayGradedSheet {
+  id: string;
+  seq: number;
+  itemCount: number;
+  sessionId: string;
+  correct: number;
+  total: number;
+  selfGraded: boolean;
+  gradedAt: string;
 }
 
 export interface SheetListItem {
@@ -105,9 +199,14 @@ export interface SheetListItem {
   wordCount: number;
   createdAt: string;
   creatorName: string;
+  /** 默写单：pending 待批改 / tested 已批改 */
   status: "pending" | "testing" | "tested";
   firstResult: { sessionId: string; correct: number; total: number } | null;
   activeSessionId: string | null;
+  /** spec 0006：格式（旧数据缺省按自测表）、题数、默写单是否自批 */
+  format?: SheetFormat;
+  itemCount?: number;
+  selfGraded?: boolean;
 }
 
 export interface SheetWord {
@@ -125,6 +224,10 @@ export interface SheetDetail {
   student: { id: string; name: string };
   modes: Mode[];
   words: SheetWord[];
+  /** spec 0006：格式；默写单的题目（自测表为 []）；批改结果（未批改或自测表为 null） */
+  format?: SheetFormat;
+  items?: DictItemView[];
+  grading?: SheetGrading | null;
 }
 
 export interface TodaySheet {
@@ -134,6 +237,9 @@ export interface TodaySheet {
   activeSessionId: string | null;
   /** 除这一份外还有几份未测 */
   remaining: number;
+  /** spec 0006：默写单显示「待批改」；itemCount 为题数 */
+  format?: SheetFormat;
+  itemCount?: number;
 }
 
 // ---------------- 学习组 ----------------
@@ -184,6 +290,8 @@ export interface SessionResult {
   newLearned: number;
   ratings: Record<string, number>;
   wrongWordIds: string[];
+  /** 默写单的句子题成绩（spec 0006；其他组没有） */
+  sentences?: { total: number; correct: number; wrongSentenceIds: string[] };
 }
 
 export interface StudySessionData {
@@ -575,6 +683,9 @@ export interface ClassStudentCoverage {
   target: number;
   tested: number;
   learning: number;
+  /** spec 0006：已测词里最近一次正式测试是自批默写单的词数；比例 = selfGraded / tested，没有已测为 null */
+  selfGraded?: number;
+  selfGradedRatio?: number | null;
 }
 
 export interface MyClass {
@@ -623,6 +734,21 @@ export interface SessionListItem {
   dayKey: string;
   startedAt: string;
   completedAt: string | null;
+  /** 默写单批改组才有（spec 0006） */
+  format?: SheetFormat;
+  selfGraded?: boolean;
+}
+
+/** 默写单批改组里的一道句子题 */
+export interface SessionDetailSentence {
+  index: number;
+  sentenceId: string;
+  type: DictItemType;
+  en: string;
+  cn: string;
+  prompt: string;
+  correct: boolean;
+  userAnswer: string | null;
 }
 
 export interface SessionRecordDetail {
@@ -642,9 +768,14 @@ export interface SessionRecordDetail {
     definition: string;
     phonetic: string | null;
     partOfSpeech: string | null;
-    answers: { mode: Mode; phase: string; attempt: number; correct: boolean; userAnswer: string | null; hintUsed: boolean; dontKnow: boolean; durationMs: number }[];
+    answers: { mode: AnswerMode; phase: string; attempt: number; correct: boolean; userAnswer: string | null; hintUsed: boolean; dontKnow: boolean; durationMs: number }[];
     review: { rating: number; dueAfter: string; stabilityAfter: number } | null;
   }[];
+  /** 默写单批改组才有（spec 0006）：格式、批改人、自批标记、句子题的对错 */
+  format?: SheetFormat;
+  gradedBy?: { id: string; name: string };
+  selfGraded?: boolean;
+  sentences?: SessionDetailSentence[];
 }
 
 export type MasteryLevel = "learning" | "consolidating" | "mastered";
@@ -683,7 +814,7 @@ export interface WordHistory {
     levelLabel: string;
   } | null;
   reviewLogs: { id: string; rating: number; stateBefore: number; stabilityAfter: number; difficultyAfter: number; dueAfter: string; reviewedAt: string; dayKey: string; sessionId: string | null }[];
-  answers: { id: string; sessionId: string; mode: Mode; phase: string; attempt: number; correct: boolean; userAnswer: string | null; hintUsed: boolean; dontKnow: boolean; dayKey: string; createdAt: string }[];
+  answers: { id: string; sessionId: string; mode: AnswerMode; phase: string; attempt: number; correct: boolean; userAnswer: string | null; hintUsed: boolean; dontKnow: boolean; dayKey: string; createdAt: string }[];
 }
 
 // ---------------- AI ----------------
@@ -727,5 +858,6 @@ export interface PassageListItem {
 
 export const KIND_LABEL: Record<SessionKind, string> = { learn: "新学", review: "复习", test: "检测", drill: "错词强化", sheet: "单词单" };
 export const MODE_LABEL: Record<Mode, string> = { recognition: "认义", spelling: "拼写", cloze: "挖空填词" };
+export const ANSWER_MODE_LABEL: Record<AnswerMode, string> = { ...MODE_LABEL, dictation: "默写" };
 export const PLAN_STATUS_LABEL: Record<PlanStatus, string> = { active: "进行中", paused: "已暂停", archived: "已归档" };
 export const RATING_LABEL: Record<number, string> = { 1: "忘记", 2: "模糊", 3: "记得", 4: "熟练" };

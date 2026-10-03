@@ -57,9 +57,12 @@ export function StudentDetailPage() {
             label: "单词单",
             children: (
               <>
-                <div style={{ marginBottom: 12 }}>
+                <div style={{ marginBottom: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <Link to={`/sheets/new?userId=${userId}`}>
                     <Button type="primary">为 {student.name} 生成单词单</Button>
+                  </Link>
+                  <Link to={`/sheets/new?format=dictation&userId=${userId}`}>
+                    <Button>出默写单</Button>
                   </Link>
                 </div>
                 <SheetsList userId={userId} />

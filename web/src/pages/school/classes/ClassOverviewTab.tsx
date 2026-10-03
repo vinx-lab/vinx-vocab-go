@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import { Alert, Button, Col, Row, Table, Tag, type ColumnType } from "@/ui";
 import { coverageRateOrder, testedRate } from "@/pages/coverage/coverage";
+import { selfGradedText } from "@/pages/sheets/dictation";
 import { useClassTargets } from "./ClassTargetsTab";
 import { useQuery } from "@/lib/query";
 import { Link } from "@/lib/router";
@@ -84,11 +85,20 @@ export function ClassOverviewTab({ classId, onSetTargets }: { classId: string; o
     {
       title: "目标覆盖",
       key: "coverage",
-      width: 100,
+      width: 120,
       sorter: (a, b) => coverageRateOrder(a.coverage) - coverageRateOrder(b.coverage),
       render: (_, r) =>
         r.coverage ? (
-          <span title={`已测 ${r.coverage.tested}/${r.coverage.target} 词`}>{percent(testedRate(r.coverage))}</span>
+          <span>
+            <span title={`已测 ${r.coverage.tested}/${r.coverage.target} 词`}>{percent(testedRate(r.coverage))}</span>
+            {selfGradedText(r.coverage) && (
+              <span title={`已测的 ${r.coverage.tested} 词里，${r.coverage.selfGraded ?? 0} 词最近一次是学生自批的默写单；需要时再出一份默写单由老师批改复核`}>
+                <Tag color="orange" bordered={false} style={{ marginLeft: 6 }}>
+                  {selfGradedText(r.coverage)}
+                </Tag>
+              </span>
+            )}
+          </span>
         ) : (
           <span style={{ color: "var(--muted)" }}>—</span>
         ),

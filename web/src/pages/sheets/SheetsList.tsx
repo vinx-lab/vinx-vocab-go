@@ -7,6 +7,7 @@ import { api, errorMessage } from "@/lib/api";
 import { EmptyBlock, ErrorBlock, Loading } from "@/components/ui";
 import type { Paged, SheetListItem } from "@/types";
 import { printLink } from "./links";
+import { gradeLink, sheetStatus } from "./dictation";
 import { preloadStudyPage } from "@/pages/study/lazy";
 
 export async function startSheetTest(sheetId: string): Promise<string> {
@@ -14,11 +15,6 @@ export async function startSheetTest(sheetId: string): Promise<string> {
   return res.id;
 }
 
-const STATUS: Record<SheetListItem["status"], { label: string; color: string }> = {
-  pending: { label: "待测试", color: "gold" },
-  testing: { label: "测试中", color: "processing" },
-  tested: { label: "已测试", color: "green" },
-};
 
 /** 单词单列表：学生看自己的；老师传 userId 看某个学生的。勾选几份可合并打印 */
 export function SheetsList({ userId }: { userId?: string }) {
@@ -82,45 +78,63 @@ export function SheetsList({ userId }: { userId?: string }) {
           <Button disabled={picked.length === 0}>合并打印所选{picked.length > 0 ? `（${picked.length}）` : ""}</Button>
         </Link>
       </div>
-      {q.data.items.map((s) => (
+      {q.data.items.map((s) => {
+        const dict = s.format === "dictation";
+        const st = sheetStatus(s.format, s.status);
+        // 默写单不能在线测试：待批改 → 批改（学生本人和能查看该学生的老师都可以），已批改 → 成绩单
+        const actions = dict ? (
+          <Link to={gradeLink(s.id)}>{s.status === "tested" ? <Button type="link">查看成绩</Button> : <Button type="primary">批改</Button>}</Link>
+        ) : (
+          <>
+            {isSelf && s.status !== "tested" && (
+              <Button type="primary" loading={busy === s.id} onClick={() => test(s)}>
+                {s.status === "testing" ? "继续测试" : "开始测试"}
+              </Button>
+            )}
+            {isSelf && s.status === "tested" && (
+              <Button loading={busy === s.id} onClick={() => test(s)}>
+                再测一次（练习）
+              </Button>
+            )}
+            {s.firstResult && (
+              <Link to={`/study/${s.firstResult.sessionId}`}>
+                <Button type="link">查看成绩</Button>
+              </Link>
+            )}
+          </>
+        );
+        return (
         <div key={s.id} className="vx-card" style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <Checkbox aria-label={`选择单词单 #${s.seq}`} checked={picked.includes(s.id)} onChange={(e) => toggle(s.id, e.target.checked)} />
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ fontWeight: 600 }}>
-              单词单 #{s.seq} <Tag color={STATUS[s.status].color} bordered={false}>{STATUS[s.status].label}</Tag>
+              {dict ? "默写单" : "单词单"} #{s.seq} <Tag bordered={false}>{dict ? "默写" : "自测"}</Tag>
+              <Tag color={st.color} bordered={false}>{st.label}</Tag>
+              {dict && s.selfGraded && (
+                <Tag color="orange" bordered={false}>
+                  自批
+                </Tag>
+              )}
             </div>
             <div style={{ color: "var(--muted)", fontSize: 13 }}>
-              {new Date(s.createdAt).toLocaleDateString()} · {s.wordCount} 词 · {s.creatorName} 生成
-              {s.firstResult && ` · 首次成绩 ${s.firstResult.correct}/${s.firstResult.total}`}
+              {new Date(s.createdAt).toLocaleDateString()} · {dict ? `${s.itemCount ?? s.wordCount} 题` : `${s.wordCount} 词`} · {s.creatorName} 生成
+              {s.firstResult && ` · ${dict ? "成绩" : "首次成绩"} ${s.firstResult.correct}/${s.firstResult.total}`}
             </div>
           </div>
           <Link to={`/sheets/${s.id}/print`} target="_blank">
             <Button>打印</Button>
           </Link>
-          {isSelf && s.status !== "tested" && (
-            <Button type="primary" loading={busy === s.id} onClick={() => test(s)}>
-              {s.status === "testing" ? "继续测试" : "开始测试"}
-            </Button>
-          )}
-          {isSelf && s.status === "tested" && (
-            <Button loading={busy === s.id} onClick={() => test(s)}>
-              再测一次（练习）
-            </Button>
-          )}
-          {s.firstResult && (
-            <Link to={`/study/${s.firstResult.sessionId}`}>
-              <Button type="link">查看成绩</Button>
-            </Link>
-          )}
+          {actions}
           {s.status === "pending" && (
-            <Popconfirm title="删除这张单词单？" onConfirm={() => remove(s)}>
+            <Popconfirm title={dict ? "删除这份默写单？" : "删除这张单词单？"} onConfirm={() => remove(s)}>
               <Button type="text" danger>
                 删除
               </Button>
             </Popconfirm>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
