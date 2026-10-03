@@ -27,19 +27,22 @@ type ImportEntry struct {
 	ExampleCn    string
 }
 
-// ImportUnit 导入的一个单元。
+// ImportUnit 导入的一个单元。Texts 为单元的篇（[句型] / [课文] 段，spec 0004）。
 type ImportUnit struct {
 	Name    string
 	Entries []ImportEntry
+	Texts   []NewUnitText
 }
 
-// ImportResult 导入统计（JSON 字段与旧版一致）。
+// ImportResult 导入统计（JSON 字段与旧版一致；texts / sentences 是 spec 0004 新增，只在导入了篇时出现）。
 type ImportResult struct {
 	Units        int `json:"units"`
 	UnitsCreated int `json:"unitsCreated"`
 	WordsLinked  int `json:"wordsLinked"`
 	WordsCreated int `json:"wordsCreated"`
 	WordsReused  int `json:"wordsReused"`
+	Texts        int `json:"texts,omitempty"`
+	Sentences    int `json:"sentences,omitempty"`
 }
 
 // EntriesFromParsed 解析结果 → 导入条目（跳过 error 条目，与旧 seed 一致）。
@@ -78,9 +81,17 @@ func ImportUnits(ctx context.Context, tx store.Querier, now time.Time, bookID st
 		unitOrder = *lastUnit + 1
 	}
 
+	// 新词的例句、单元的篇在全部词入库之后再写（句子关联要用到本次导入的新词）
+	var exampleWordIDs []string
+	type pendingTexts struct {
+		unitID string
+		texts  []NewUnitText
+	}
+	var pending []pendingTexts
+
 	for _, u := range units {
 		entries := dedupeImport(u.Entries)
-		if len(entries) == 0 {
+		if len(entries) == 0 && len(u.Texts) == 0 {
 			continue
 		}
 		res.Units++
@@ -96,6 +107,12 @@ func ImportUnits(ctx context.Context, tx store.Querier, now time.Time, bookID st
 			res.UnitsCreated++
 		} else if err != nil {
 			return res, err
+		}
+		if len(u.Texts) > 0 {
+			pending = append(pending, pendingTexts{unitID: unitID, texts: u.Texts})
+		}
+		if len(entries) == 0 {
+			continue
 		}
 
 		ids := map[string]string{}
@@ -129,6 +146,9 @@ func ImportUnits(ctx context.Context, tx store.Querier, now time.Time, bookID st
 			}
 			ids[e.Spelling] = id
 			created++
+			if strings.TrimSpace(e.Example) != "" {
+				exampleWordIDs = append(exampleWordIDs, id)
+			}
 		}
 		res.WordsCreated += created
 		res.WordsReused += len(entries) - created
@@ -149,6 +169,28 @@ func ImportUnits(ctx context.Context, tx store.Querier, now time.Time, bookID st
 			order++ // 与旧版 createMany 一致：跳过的重复项也占一个序号
 			n, _ := r.RowsAffected()
 			res.WordsLinked += int(n)
+		}
+	}
+
+	if len(exampleWordIDs) == 0 && len(pending) == 0 {
+		return res, nil
+	}
+	lx, err := LoadLexicon(ctx, tx)
+	if err != nil {
+		return res, err
+	}
+	for _, id := range exampleWordIDs {
+		if err := SyncExampleSentence(ctx, tx, lx, now, id); err != nil {
+			return res, err
+		}
+	}
+	for _, p := range pending {
+		for _, t := range p.texts {
+			if _, err := CreateUnitText(ctx, tx, lx, now, p.unitID, t); err != nil {
+				return res, err
+			}
+			res.Texts++
+			res.Sentences += len(t.Sentences)
 		}
 	}
 	return res, nil
@@ -321,10 +363,16 @@ func UpdateBook(ctx context.Context, q store.Querier, now time.Time, id string, 
 	return err
 }
 
-// DeleteBook 删除词书（级联删除其单元、单元关联；不影响全局 Word 行）。
+// DeleteBook 删除词书（级联删除其单元、单元关联、单元的篇；不影响全局 Word 行），并清理不再被引用的句子。
 func DeleteBook(ctx context.Context, q store.Querier, id string) error {
-	_, err := q.ExecContext(ctx, `DELETE FROM "Book" WHERE "id" = ?`, id)
-	return err
+	sentenceIDs, err := SentenceIDsOfBook(ctx, q, id)
+	if err != nil {
+		return err
+	}
+	if _, err := q.ExecContext(ctx, `DELETE FROM "Book" WHERE "id" = ?`, id); err != nil {
+		return err
+	}
+	return PruneSentences(ctx, q, sentenceIDs)
 }
 
 // AssertBookNotUsedByPlans 词书被未归档计划引用时拒绝删除（旧 assertNotUsedByPlans({ bookId })）。
@@ -529,10 +577,16 @@ func UpdateUnit(ctx context.Context, q store.Querier, id string, name *string, s
 	return GetUnitRow(ctx, q, id)
 }
 
-// DeleteUnit 删除单元（级联删除 UnitWord 关联，不影响全局 Word 行）。
+// DeleteUnit 删除单元（级联删除 UnitWord 关联与单元的篇，不影响全局 Word 行），并清理不再被引用的句子。
 func DeleteUnit(ctx context.Context, q store.Querier, id string) error {
-	_, err := q.ExecContext(ctx, `DELETE FROM "Unit" WHERE "id" = ?`, id)
-	return err
+	sentenceIDs, err := SentenceIDsOfUnits(ctx, q, []string{id})
+	if err != nil {
+		return err
+	}
+	if _, err := q.ExecContext(ctx, `DELETE FROM "Unit" WHERE "id" = ?`, id); err != nil {
+		return err
+	}
+	return PruneSentences(ctx, q, sentenceIDs)
 }
 
 // ReorderUnits 整册一次提交单元顺序：去重、过滤未知 id，必须覆盖该词书全部单元，否则 400。
@@ -832,6 +886,12 @@ func UpdateWord(ctx context.Context, q store.Querier, now time.Time, id string, 
 			return nil, err
 		}
 	}
+	if p.Example != nil || p.ExampleCn != nil {
+		// 例句双写（spec 0004 §3）
+		if err := SyncExampleSentence(ctx, q, nil, now, id); err != nil {
+			return nil, err
+		}
+	}
 	return GetWordRow(ctx, q, id)
 }
 
@@ -878,20 +938,23 @@ type PreviewEntry struct {
 	ExistingDefinition *string  `json:"existingDefinition"`
 }
 
-// PreviewUnit 导入预览的一个单元。
+// PreviewUnit 导入预览的一个单元。Texts 为 [句型] / [课文] 段（spec 0004，只在有时出现）。
 type PreviewUnit struct {
 	Name    string         `json:"name"`
 	Entries []PreviewEntry `json:"entries"`
+	Texts   []PreviewText  `json:"texts,omitempty"`
 }
 
-// PreviewStats 导入预览的统计。
+// PreviewStats 导入预览的统计。Texts / Sentences 是 spec 0004 新增，只在有句型 / 课文时出现。
 type PreviewStats struct {
-	Units    int `json:"units"`
-	Entries  int `json:"entries"`
-	OK       int `json:"ok"`
-	Warning  int `json:"warning"`
-	Error    int `json:"error"`
-	Existing int `json:"existing"`
+	Units     int `json:"units"`
+	Entries   int `json:"entries"`
+	OK        int `json:"ok"`
+	Warning   int `json:"warning"`
+	Error     int `json:"error"`
+	Existing  int `json:"existing"`
+	Texts     int `json:"texts,omitempty"`
+	Sentences int `json:"sentences,omitempty"`
 }
 
 // PreviewResult 导入预览的响应体。
@@ -960,9 +1023,55 @@ func PreviewImport(ctx context.Context, q store.Querier, text string, splitByIni
 	if err != nil {
 		return nil, err
 	}
+	// 句型 / 课文：关联范围是词库 + 本次导入的新词；已知词 = 本次导入到当前单元为止的词
+	var lx *Lexicon
+	idBySpelling := map[string]string{}
+	for _, u := range parsed {
+		if len(u.Texts) == 0 {
+			continue
+		}
+		base, err := LoadLexicon(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+		for id, w := range base.Words {
+			idBySpelling[w.Spelling] = id
+		}
+		var extra []LexWord
+		for _, pu := range parsed {
+			for _, e := range pu.Entries {
+				if e.Status == vocabparser.StatusError || e.Spelling == "" {
+					continue
+				}
+				if _, ok := idBySpelling[e.Spelling]; !ok {
+					id := newWordPrefix + e.Spelling
+					idBySpelling[e.Spelling] = id
+					extra = append(extra, LexWord{ID: id, Spelling: e.Spelling, Definition: e.Definition})
+				}
+			}
+		}
+		lx = base.With(extra)
+		break
+	}
+	known := map[string]bool{}
+
 	res := &PreviewResult{Units: make([]PreviewUnit, 0, len(parsed))}
 	for _, u := range parsed {
 		pu := PreviewUnit{Name: u.Name, Entries: make([]PreviewEntry, 0, len(u.Entries))}
+		if lx != nil {
+			for _, e := range u.Entries {
+				if id, ok := idBySpelling[e.Spelling]; ok {
+					known[id] = true
+				}
+			}
+			if len(u.Texts) > 0 {
+				pu.Texts = previewTexts(lx, u.Texts, known)
+				for _, t := range u.Texts {
+					res.Stats.Texts++
+					res.Stats.Sentences += len(t.Sentences)
+				}
+			}
+		}
 		for _, e := range u.Entries {
 			def, ok := existing[e.Spelling]
 			pe := PreviewEntry{

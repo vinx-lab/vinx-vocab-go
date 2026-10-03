@@ -151,6 +151,21 @@ func AssertBooksVisible(ctx context.Context, q store.Querier, a *Actor, ids []st
 // 个人版不看（班级功能关闭、无法退班，只用自己设的目标）。
 func TargetUsesClasses(a *Actor) bool { return !IsPersonal(a) }
 
+// VisibleUnit 单元所在词书对当前操作者可见时返回单元；不存在或不可见返回 (nil, nil)
+// （单元内容的查看跟随词书可见性，spec 0004 §10）。
+func VisibleUnit(ctx context.Context, q store.Querier, a *Actor, unitID string) (*UnitRow, error) {
+	where, args, err := VisibleBookFilter(ctx, q, a, "bk")
+	if err != nil {
+		return nil, err
+	}
+	u, err := scanUnit(q.QueryRowContext(ctx, `SELECT u."id", u."bookId", u."name", u."sortOrder", u."createdAt"
+		FROM "Unit" u JOIN "Book" bk ON bk."id" = u."bookId" WHERE u."id" = ? AND `+where, append([]any{unitID}, args...)...))
+	if store.IsNoRows(err) {
+		return nil, nil
+	}
+	return u, err
+}
+
 // EditableBook 可编辑词书的归属信息。
 type EditableBook struct {
 	OwnerID  *string

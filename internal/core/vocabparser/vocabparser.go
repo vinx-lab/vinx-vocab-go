@@ -39,10 +39,11 @@ type ParsedEntry struct {
 	Line         int         `json:"line"`
 }
 
-// ParsedUnit 一个单元及其词条。
+// ParsedUnit 一个单元及其词条，以及 [句型] / [课文] 段（spec 0004；没有时为空切片）。
 type ParsedUnit struct {
 	Name    string        `json:"name"`
 	Entries []ParsedEntry `json:"entries"`
+	Texts   []ParsedText  `json:"texts"`
 }
 
 // jsSpace JS 正则 \s 的字符集（不含外层方括号）。
@@ -191,8 +192,35 @@ func ParseVocabText(text, defaultUnit string) []ParsedUnit {
 		return nil
 	}
 
+	newUnit := func(name string) *ParsedUnit {
+		u := &ParsedUnit{Name: name, Entries: []ParsedEntry{}, Texts: []ParsedText{}}
+		units = append(units, u)
+		return u
+	}
+	// 句型 / 课文段（spec 0004 §7）：标记行开段，下一个单元标题或标记结束
+	var section *textSection
+	var sectionUnit *ParsedUnit
+	closeSection := func() {
+		if section != nil && len(section.text.Sentences) > 0 {
+			sectionUnit.Texts = append(sectionUnit.Texts, *section.text)
+		}
+		section, sectionUnit = nil, nil
+	}
+
 	for i, line := range lineSplitRe.Split(text, -1) {
 		trimmed := jsTrim(line)
+		if k := markerKind(trimmed); k != "" {
+			closeSection()
+			if current == nil {
+				current = newUnit(defaultUnit)
+			}
+			section, sectionUnit = &textSection{text: newParsedText(k, i+1)}, current
+			continue
+		}
+		if section != nil && !unitHeading.MatchString(trimmed) {
+			section.line(line, trimmed, i+1)
+			continue
+		}
 		if trimmed == "" {
 			continue
 		}
@@ -203,24 +231,24 @@ func ParseVocabText(text, defaultUnit string) []ParsedUnit {
 			name, isHeading = m[1], true
 		}
 		if isHeading {
+			closeSection()
 			name = jsTrim(name)
 			current = find(name)
 			if current == nil {
-				current = &ParsedUnit{Name: name, Entries: []ParsedEntry{}}
-				units = append(units, current)
+				current = newUnit(name)
 			}
 			continue
 		}
 		if current == nil {
-			current = &ParsedUnit{Name: defaultUnit, Entries: []ParsedEntry{}}
-			units = append(units, current)
+			current = newUnit(defaultUnit)
 		}
 		current.Entries = append(current.Entries, parseLine(trimmed, i+1))
 	}
+	closeSection()
 
 	out := []ParsedUnit{}
 	for _, u := range units {
-		if len(u.Entries) > 0 {
+		if len(u.Entries) > 0 || len(u.Texts) > 0 {
 			out = append(out, *u)
 		}
 	}
@@ -263,5 +291,5 @@ func DedupeUnitEntries(u ParsedUnit) ParsedUnit {
 		seen[key] = true
 		entries = append(entries, e)
 	}
-	return ParsedUnit{Name: u.Name, Entries: entries}
+	return ParsedUnit{Name: u.Name, Entries: entries, Texts: u.Texts}
 }

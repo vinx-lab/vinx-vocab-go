@@ -1,0 +1,220 @@
+# 不规则变化表（spec 0004 §5）：句子里的词形 → 词库里的原形。
+# 每行「原形<TAB>变化形式（逗号分隔）」；# 开头为注释。比较时一律小写。
+# 初稿从中考词汇表里带注释的拼写整理（如 go (went, gone)、child (复children)），
+# 再补上教材常见的不规则动词、复数与比较级。扩展名不是 .txt，不会被当成内置词书导入。
+#
+# ===== 动词 =====
+be	am, is, are, was, were, been, being, 's, 're, 'm
+have	has, had, having
+do	does, did, done, doing
+go	goes, went, gone
+arise	arose, arisen
+awake	awoke, awoken
+bear	bore, born, borne
+beat	beat, beaten
+become	became, become
+begin	began, begun
+bend	bent
+bet	bet
+bite	bit, bitten
+bleed	bled
+blow	blew, blown
+break	broke, broken
+breed	bred
+bring	brought
+broadcast	broadcast
+build	built
+burn	burnt
+burst	burst
+buy	bought
+can	could
+cast	cast
+catch	caught
+choose	chose, chosen
+cling	clung
+come	came, come
+cost	cost
+creep	crept
+cut	cut
+deal	dealt
+dig	dug
+draw	drew, drawn
+dream	dreamt
+drink	drank, drunk
+drive	drove, driven
+eat	ate, eaten
+fall	fell, fallen
+feed	fed
+feel	felt
+fight	fought
+find	found
+flee	fled
+fly	flew, flown, flies
+forbid	forbade, forbidden
+forecast	forecast
+forget	forgot, forgotten
+forgive	forgave, forgiven
+freeze	froze, frozen
+get	got, gotten
+give	gave, given
+grind	ground
+grow	grew, grown
+hang	hung
+hear	heard
+hide	hid, hidden
+hit	hit
+hold	held
+hurt	hurt
+keep	kept
+kneel	knelt
+know	knew, known
+lay	laid
+lead	led
+lean	leant
+learn	learnt
+leave	left
+lend	lent
+let	let
+lie	lay, lain, lying
+light	lit
+lose	lost
+make	made
+may	might
+mean	meant
+meet	met
+mistake	mistook, mistaken
+overcome	overcame, overcome
+pay	paid
+prove	proven
+put	put
+quit	quit
+read	read
+rid	rid
+ride	rode, ridden
+ring	rang, rung
+rise	rose, risen
+run	ran, run
+say	said, says
+see	saw, seen
+seek	sought
+sell	sold
+send	sent
+set	set
+sew	sewn
+shake	shook, shaken
+shall	should
+shine	shone
+shoot	shot
+show	shown
+shrink	shrank, shrunk
+shut	shut
+sing	sang, sung
+sink	sank, sunk
+sit	sat
+sleep	slept
+slide	slid
+smell	smelt
+sow	sown
+speak	spoke, spoken
+speed	sped
+spell	spelt
+spend	spent
+spill	spilt
+spin	spun
+spit	spat
+split	split
+spoil	spoilt
+spread	spread
+spring	sprang, sprung
+stand	stood
+steal	stole, stolen
+stick	stuck
+sting	stung
+strike	struck, stricken
+swear	swore, sworn
+sweep	swept
+swim	swam, swum
+swing	swung
+take	took, taken
+teach	taught
+tear	tore, torn
+tell	told
+think	thought
+throw	threw, thrown
+understand	understood
+undertake	undertook, undertaken
+upset	upset
+wake	woke, woken
+wear	wore, worn
+weep	wept
+will	would
+win	won
+wind	wound
+withdraw	withdrew, withdrawn
+write	wrote, written
+#
+# ===== 名词复数 =====
+child	children
+foot	feet
+goose	geese
+man	men
+woman	women
+mouse	mice
+tooth	teeth
+ox	oxen
+person	people
+sheep	sheep
+deer	deer
+fish	fish
+aircraft	aircraft
+Chinese	Chinese
+Japanese	Japanese
+leaf	leaves
+life	lives
+knife	knives
+wife	wives
+wolf	wolves
+thief	thieves
+shelf	shelves
+half	halves
+self	selves
+loaf	loaves
+calf	calves
+potato	potatoes
+tomato	tomatoes
+hero	heroes
+businessman	businessmen
+businesswoman	businesswomen
+policeman	policemen
+policewoman	policewomen
+fireman	firemen
+postman	postmen
+Englishman	Englishmen
+Frenchman	Frenchmen
+gentleman	gentlemen
+salesman	salesmen
+fisherman	fishermen
+spokesman	spokesmen
+chairman	chairmen
+#
+# ===== 形容词 / 副词比较级、最高级 =====
+good	better, best
+well	better, best
+bad	worse, worst
+badly	worse, worst
+ill	worse, worst
+many	more, most
+much	more, most
+little	less, least
+far	farther, farthest, further, furthest
+old	elder, eldest
+#
+# ===== 代词 =====
+I	me, my, mine, myself
+you	your, yours, yourself, yourselves
+he	him, his, himself
+she	her, hers, herself
+it	its, itself
+we	us, our, ours, ourselves
+they	them, their, theirs, themselves
+a	an

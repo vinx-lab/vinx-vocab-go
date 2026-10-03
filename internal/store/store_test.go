@@ -38,9 +38,11 @@ func TestMigrateCreatesAllTables(t *testing.T) {
 	}
 	rows.Close()
 	want := []string{"Answer", "AppSetting", "Book", "ClassMember", "Classroom", "MemoryState", "Passage", "Plan", "PlanTarget", "PlanUnit", "ReviewLog", "StudySession", "Unit", "UnitWord", "User", "Word", "WordSheet",
-		"ClassTargetBook", "UserTargetBook"} // 0002_target_books
+		"ClassTargetBook", "UserTargetBook", // 0002_target_books
+		// 0003_sentences（spec 0004）
+		"Sentence", "SentenceWord", "UnitText", "UnitTextSentence", "PassageSentence"}
 	sort.Strings(want)
-	if !equal(names, want) {
+	if len(names) != len(want) || !equal(names, want) {
 		t.Fatalf("tables = %v", names)
 	}
 	var idx int
@@ -309,11 +311,13 @@ func TestBackupBeforePendingMigrationKeepsThree(t *testing.T) {
 	}
 
 	// 新增一条迁移：重新 Open 时先备份（备份里没有新表），再执行迁移
-	init0001, _ := fs.ReadFile(migrationsFS, "migrations/0001_init.sql")
-	migrationSource = fstest.MapFS{
-		"migrations/0001_init.sql":  {Data: init0001},
-		"migrations/0002_extra.sql": {Data: []byte(`CREATE TABLE "Extra" ("x" TEXT);`)},
+	withExtra := fstest.MapFS{"migrations/9999_extra.sql": {Data: []byte(`CREATE TABLE "Extra" ("x" TEXT);`)}}
+	real, _ := fs.ReadDir(migrationsFS, "migrations")
+	for _, e := range real {
+		b, _ := fs.ReadFile(migrationsFS, "migrations/"+e.Name())
+		withExtra["migrations/"+e.Name()] = &fstest.MapFile{Data: b}
 	}
+	migrationSource = withExtra
 	t.Cleanup(func() { migrationSource = migrationsFS })
 	db3, err := Open(path)
 	if err != nil {
@@ -332,11 +336,9 @@ func TestBackupBeforePendingMigrationKeepsThree(t *testing.T) {
 	if err := bak2.QueryRow(`SELECT count(*) FROM "Extra"`).Scan(&n); err == nil {
 		t.Fatal("备份应是迁移前的状态")
 	}
-	// 前面按真实迁移目录建库（已执行全部内置迁移），这里再加上 0002_extra
-	builtin, _ := fs.ReadDir(migrationsFS, "migrations")
 	var versions int
 	db3.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&versions)
-	if versions != len(builtin)+1 {
+	if versions != len(real)+1 {
 		t.Fatalf("schema_migrations = %d", versions)
 	}
 }

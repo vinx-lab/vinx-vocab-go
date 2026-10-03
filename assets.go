@@ -7,3 +7,9 @@ import "embed"
 //
 //go:embed data/vocab/*.txt
 var VocabFS embed.FS
+
+// IrregularForms 内置不规则变化表（词形还原用，spec 0004 §5）：每行「原形<TAB>变化形式，逗号分隔」。
+// 扩展名是 .tsv，不在 VocabFS 里，不会被当成词书导入。
+//
+//go:embed data/vocab/irregular-forms.tsv
+var IrregularForms string

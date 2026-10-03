@@ -201,6 +201,7 @@ type importEntryBody struct {
 type importUnitBody struct {
 	Name    httpx.Opt[string]            `json:"name"`
 	Entries httpx.Opt[[]importEntryBody] `json:"entries"`
+	Texts   httpx.Opt[[]textBody]        `json:"texts"` // spec 0004：单元的篇（可选）
 }
 
 type newBookImportBody struct {
@@ -284,7 +285,11 @@ func (b *importBody) Validate(v *httpx.V) {
 				})
 			}
 		}
-		out = append(out, service.ImportUnit{Name: name, Entries: entries})
+		texts := validateTextList(v, prefix+".texts", u.Texts, false)
+		for i := range texts {
+			texts[i].Source = service.SentenceImport
+		}
+		out = append(out, service.ImportUnit{Name: name, Entries: entries, Texts: texts})
 	}
 	b.units = out
 }
@@ -703,6 +708,11 @@ func registerBooks(r *Router, d *Deps) {
 			}
 			if !service.IsAdmin(actor) {
 				body.newBook.IsSystem = false
+			}
+		}
+		for i := range body.units {
+			for j := range body.units[i].Texts {
+				body.units[i].Texts[j].CreatedByID = actor.ID
 			}
 		}
 		var result *service.ImportBooksResult

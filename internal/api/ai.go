@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -640,6 +641,10 @@ func registerAI(r *Router, d *Deps) {
 		if err != nil {
 			return err
 		}
+		// spec 0004：逐句结构（没有拆分的旧短文为空数组）
+		if p.Sentences, err = service.PassageSentences(ctx, d.DB, p.ID); err != nil {
+			return err
+		}
 		httpx.OK(w, p)
 		return nil
 	}, auth.RequireCap(core.CapStudy))
@@ -656,7 +661,17 @@ func registerAI(r *Router, d *Deps) {
 		if err != nil {
 			return err
 		}
-		if _, err := d.DB.ExecContext(ctx, `DELETE FROM "Passage" WHERE "id" = ?`, id); err != nil {
+		err = d.DB.Tx(ctx, func(tx *sql.Tx) error {
+			sentenceIDs, err := service.SentenceIDsOfPassage(ctx, tx, id)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM "Passage" WHERE "id" = ?`, id); err != nil {
+				return err
+			}
+			return service.PruneSentences(ctx, tx, sentenceIDs)
+		})
+		if err != nil {
 			return err
 		}
 		httpx.OK(w, nil)
@@ -717,6 +732,7 @@ type passageDetail struct {
 	Words     []passageWordBrief        `json:"words"`
 	Model     *string                   `json:"model"`
 	CreatedAt store.Time                `json:"createdAt"`
+	Sentences []service.SentenceView    `json:"sentences"` // spec 0004
 }
 
 func wordsBrief(ctx context.Context, q store.Querier, ids []string) ([]passageWordBrief, error) {

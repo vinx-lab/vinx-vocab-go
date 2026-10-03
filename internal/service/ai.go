@@ -385,6 +385,7 @@ func GenerateExamples(ctx context.Context, cache *AIConfigCache, q store.Querier
 
 	items := []ExampleResultItem{}
 	failed := []string{}
+	var exampleLex *Lexicon
 	for i, w := range rows {
 		hit, ok := bySpelling[strings.ToLower(w.Spelling)]
 		if !ok && len(list) == len(rows) {
@@ -401,6 +402,15 @@ func GenerateExamples(ctx context.Context, cache *AIConfigCache, q store.Querier
 		}
 		ts := store.NewTime(now)
 		if _, err := q.ExecContext(ctx, `UPDATE "Word" SET "example"=?,"exampleCn"=?,"exampleSource"='ai',"exampleAt"=?,"updatedAt"=? WHERE "id"=?`, example, exampleCn, ts, ts, w.ID); err != nil {
+			return AiExamplesJobResult{}, err
+		}
+		// 例句双写（spec 0004 §3）
+		if exampleLex == nil {
+			if exampleLex, err = LoadLexicon(ctx, q); err != nil {
+				return AiExamplesJobResult{}, err
+			}
+		}
+		if err := SyncExampleSentence(ctx, q, exampleLex, now, w.ID); err != nil {
 			return AiExamplesJobResult{}, err
 		}
 		items = append(items, ExampleResultItem{WordID: w.ID, Spelling: w.Spelling, Example: example, ExampleCn: exampleCn, ClozeReady: clozeReady(example, w.Spelling)})
@@ -532,6 +542,10 @@ func SavePassage(ctx context.Context, q store.Querier, now time.Time, userID, mo
 	_, err := q.ExecContext(ctx, `INSERT INTO "Passage" ("id","userId","title","titleCn","body","bodyCn","questions","wordIds","source","model","createdAt") VALUES (?,?,?,?,?,?,?,?,'ai',?,?)`,
 		id, userID, r.Title, r.TitleCn, r.Passage, r.PassageCn, questionsJSON, wordIDsJSON, model, store.NewTime(now))
 	if err != nil {
+		return "", err
+	}
+	// 逐句结构（spec 0004 §4）：中英句数一致时拆分；0005 让 AI 直接按句输出后改为直接保存
+	if err := SavePassageSentences(ctx, q, now, id); err != nil {
 		return "", err
 	}
 	return id, nil
