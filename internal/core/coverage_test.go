@@ -88,6 +88,63 @@ func TestWordCoverage(t *testing.T) {
 	}
 }
 
+func TestWordCoverageDetailSelfGraded(t *testing.T) {
+	at := func(d int) time.Time { return time.Date(2026, 10, d, 8, 0, 0, 0, time.UTC) }
+	ptr := func(t time.Time) *time.Time { return &t }
+	ans := func(session string, d int, correct, self bool) CoverageAnswer {
+		return CoverageAnswer{SessionID: session, Kind: "sheet", Phase: "test", Attempt: 1, Correct: correct, At: at(d), SelfGraded: self}
+	}
+	cases := []struct {
+		name       string
+		answers    []CoverageAnswer
+		memory     *CoverageMemory
+		wantStatus CoverageStatus
+		wantSelf   bool
+	}{
+		{"未测不算自批", nil, nil, CoverageUntested, false},
+		{"自批答对", []CoverageAnswer{ans("s1", 1, true, true)}, nil, CoverageKnown, true},
+		{"自批答错", []CoverageAnswer{ans("s1", 1, false, true)}, nil, CoverageLearning, true},
+		{"老师批改", []CoverageAnswer{ans("s1", 1, true, false)}, nil, CoverageKnown, false},
+		{"自批后老师复核：取最近一次", []CoverageAnswer{ans("s1", 1, true, true), ans("s2", 2, false, false)}, nil, CoverageLearning, false},
+		{"老师批改后又自批：取最近一次", []CoverageAnswer{ans("s1", 1, true, false), ans("s2", 2, true, true)}, nil, CoverageKnown, true},
+		{"自批答错后记忆达到已掌握：仍按那次自批", []CoverageAnswer{ans("s1", 1, false, true)}, &CoverageMemory{Stability: 30, LastReview: ptr(at(3))}, CoverageKnown, true},
+		{"自批的重测组不计", []CoverageAnswer{ans("s1", 1, true, false), {SessionID: "s2", Kind: "sheet", Phase: "test", Attempt: 1, Correct: true, At: at(2), Retake: true, SelfGraded: true}}, nil, CoverageKnown, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			st, self := WordCoverageDetail(c.answers, c.memory)
+			if st != c.wantStatus || self != c.wantSelf {
+				t.Fatalf("got %s %v want %s %v", st, self, c.wantStatus, c.wantSelf)
+			}
+		})
+	}
+}
+
+func TestCountSelfGraded(t *testing.T) {
+	books := []CoverageBook{
+		{BookID: "b1", WordIDs: []string{"a", "b", "c", "a"}},
+		{BookID: "b2", WordIDs: []string{"a", "d", "e"}},
+	}
+	status := map[string]CoverageStatus{"a": CoverageKnown, "b": CoverageLearning, "c": CoverageKnown, "d": CoverageUntested}
+	cases := []struct {
+		name string
+		self map[string]bool
+		want int
+	}{
+		{"没有自批", nil, 0},
+		{"跨书重复只算一次", map[string]bool{"a": true}, 1},
+		{"会了和要学都算", map[string]bool{"a": true, "b": true}, 2},
+		{"未测的和不在目标里的不算", map[string]bool{"d": true, "e": true, "x": true, "c": true}, 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := CountSelfGraded(status, c.self, books); got != c.want {
+				t.Fatalf("got %d want %d", got, c.want)
+			}
+		})
+	}
+}
+
 func TestSummarizeCoverage(t *testing.T) {
 	status := map[string]CoverageStatus{"a": CoverageKnown, "b": CoverageLearning, "c": CoverageKnown, "x": CoverageLearning}
 	// b1 书内重复只算一次；b2 的 a 与 b1 重叠，合计只算一次

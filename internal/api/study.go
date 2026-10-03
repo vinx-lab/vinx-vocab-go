@@ -201,7 +201,9 @@ type todayView struct {
 	core.TodaySummary
 	DrillAvailable int                    `json:"drillAvailable"`
 	Sheet          *service.NextSheetView `json:"sheet"`
-	Streak         int                    `json:"streak"`
+	// GradedSheets 今天批改提交的默写单（spec 0006，今日页显示「已批改」；sheet 照旧只给待测 / 待批改的下一份）。
+	GradedSheets []service.GradedSheetToday `json:"gradedSheets"`
+	Streak       int                        `json:"streak"`
 	Stats          service.TodayStats     `json:"stats"`
 	LearnedWords   int                    `json:"learnedWords"`
 }
@@ -319,7 +321,11 @@ func registerStudy(r *Router, d *Deps) {
 		if err != nil {
 			return err
 		}
-		httpx.OK(w, todayView{TodaySummary: queue, DrillAvailable: len(drill), Sheet: sheet, Streak: summary.Streak,
+		graded, err := service.SheetsGradedToday(ctx, d.DB, actor.ID, core.DayKeyOf(now, loc))
+		if err != nil {
+			return err
+		}
+		httpx.OK(w, todayView{TodaySummary: queue, DrillAvailable: len(drill), Sheet: sheet, GradedSheets: graded, Streak: summary.Streak,
 			Stats: summary.Today, LearnedWords: summary.LearnedWords})
 		return nil
 	}, study)

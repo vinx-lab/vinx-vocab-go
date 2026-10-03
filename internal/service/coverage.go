@@ -235,6 +235,8 @@ type userCoverage struct {
 	targets *TargetBooksView
 	books   []core.CoverageBook
 	status  map[string]core.CoverageStatus
+	// selfGraded 最近一次正式测试是自批默写单的词（spec 0006）。
+	selfGraded map[string]bool
 }
 
 // bookWords 词书的词（按单元顺序、单元内顺序；不去重，由 core 去重）。
@@ -271,7 +273,7 @@ func coverageBatch(ctx context.Context, q store.Querier, useClasses bool, userID
 	active := []string{} // 有目标的用户
 	for _, id := range userIDs {
 		t := targets[id]
-		out[id] = &userCoverage{targets: t, books: []core.CoverageBook{}, status: map[string]core.CoverageStatus{}}
+		out[id] = &userCoverage{targets: t, books: []core.CoverageBook{}, status: map[string]core.CoverageStatus{}, selfGraded: map[string]bool{}}
 		if len(t.Books) > 0 {
 			active = append(active, id)
 		}
@@ -305,22 +307,26 @@ func coverageBatch(ctx context.Context, q store.Querier, useClasses bool, userID
 
 	ph, args := store.Placeholders(len(active)), store.Args(active)
 	// 已交卷的检测类组（判定重测）
-	srows, err := q.QueryContext(ctx, `SELECT "id","userId","kind","planId","sheetId","completedAt" FROM "StudySession"
-		WHERE "userId" IN (`+ph+`) AND "kind" IN ('test','sheet') AND "status" = 'completed' ORDER BY "completedAt", rowid`, args...)
+	// 默写单的批改组另取快照（判定自批，spec 0006）
+	srows, err := q.QueryContext(ctx, `SELECT s."id",s."userId",s."kind",s."planId",s."sheetId",s."completedAt",
+			CASE WHEN w."format" = 'dictation' THEN s."snapshot" END
+		FROM "StudySession" s LEFT JOIN "WordSheet" w ON w."id" = s."sheetId"
+		WHERE s."userId" IN (`+ph+`) AND s."kind" IN ('test','sheet') AND s."status" = 'completed' ORDER BY s."completedAt", s.rowid`, args...)
 	if err != nil {
 		return nil, err
 	}
 	type sessInfo struct {
-		kind string
-		at   store.NullTime
+		kind       string
+		at         store.NullTime
+		selfGraded bool
 	}
 	sessions := map[string]sessInfo{}
 	refs := []core.TestSessionRef{}
 	for srows.Next() {
 		var id, uid, kind string
-		var planID, sheetID *string
+		var planID, sheetID, dictSnapshot *string
 		var at store.NullTime
-		if err := srows.Scan(&id, &uid, &kind, &planID, &sheetID, &at); err != nil {
+		if err := srows.Scan(&id, &uid, &kind, &planID, &sheetID, &at, &dictSnapshot); err != nil {
 			srows.Close()
 			return nil, err
 		}
@@ -328,7 +334,16 @@ func coverageBatch(ctx context.Context, q store.Querier, useClasses bool, userID
 		if kind == "sheet" {
 			key = sheetID
 		}
-		sessions[id] = sessInfo{kind: kind, at: at}
+		self := false
+		if dictSnapshot != nil {
+			sg, err := snapshotSelfGraded(*dictSnapshot)
+			if err != nil {
+				srows.Close()
+				return nil, err
+			}
+			self = sg != nil && *sg
+		}
+		sessions[id] = sessInfo{kind: kind, at: at, selfGraded: self}
 		refs = append(refs, core.TestSessionRef{ID: id, Kind: kind, GroupKey: key, CompletedAt: at.Time})
 	}
 	srows.Close()
@@ -362,6 +377,7 @@ func coverageBatch(ctx context.Context, q store.Querier, useClasses bool, userID
 		}
 		answers[uid][wid] = append(answers[uid][wid], core.CoverageAnswer{
 			SessionID: sid, Kind: info.kind, Phase: phase, Attempt: attempt, Correct: correct, Retake: !formal[sid], At: info.at.Time,
+			SelfGraded: info.selfGraded,
 		})
 	}
 	arows.Close()
@@ -403,7 +419,11 @@ func coverageBatch(ctx context.Context, q store.Querier, useClasses bool, userID
 	for _, id := range active {
 		c := out[id]
 		for w := range targetWords[id] {
-			c.status[w] = core.WordCoverage(answers[id][w], memory[id][w])
+			st, self := core.WordCoverageDetail(answers[id][w], memory[id][w])
+			c.status[w] = st
+			if self {
+				c.selfGraded[w] = true
+			}
 		}
 	}
 	return out, nil
@@ -432,6 +452,10 @@ type ClassStudentCoverage struct {
 	Target   int `json:"target"`
 	Tested   int `json:"tested"`
 	Learning int `json:"learning"`
+	// SelfGraded 已测的目标词里，最近一次正式测试是自批默写单的词数（spec 0006）；
+	// SelfGradedRatio = SelfGraded / Tested，还没有已测的词时为 null。
+	SelfGraded      int      `json:"selfGraded"`
+	SelfGradedRatio *float64 `json:"selfGradedRatio"`
 }
 
 // classCoverage 班级概览：每个学生按自己的有效目标（所在全部班级的并集）；没有目标为 nil。
@@ -446,7 +470,13 @@ func classCoverage(ctx context.Context, q store.Querier, userIDs []string) (map[
 			continue
 		}
 		total, _ := core.SummarizeCoverage(c.status, c.books)
-		out[id] = &ClassStudentCoverage{Target: total.Target, Tested: total.Tested, Learning: total.Learning}
+		self := core.CountSelfGraded(c.status, c.selfGraded, c.books)
+		var ratio *float64
+		if total.Tested > 0 {
+			r := float64(self) / float64(total.Tested)
+			ratio = &r
+		}
+		out[id] = &ClassStudentCoverage{Target: total.Target, Tested: total.Tested, Learning: total.Learning, SelfGraded: self, SelfGradedRatio: ratio}
 	}
 	return out, nil
 }

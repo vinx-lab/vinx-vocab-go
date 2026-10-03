@@ -328,10 +328,10 @@ func TestCoverageRecordsAndOverview(t *testing.T) {
 		m := s.(map[string]any)
 		got[m["userId"].(string)] = m["coverage"]
 	}
-	if !reflect.DeepEqual(got[c.s2ID], map[string]any{"target": float64(5), "tested": float64(4), "learning": float64(1)}) {
+	if !reflect.DeepEqual(got[c.s2ID], map[string]any{"target": float64(5), "tested": float64(4), "learning": float64(1), "selfGraded": float64(0), "selfGradedRatio": float64(0)}) {
 		t.Fatalf("概览 s2 = %v", got[c.s2ID])
 	}
-	if !reflect.DeepEqual(got[c.s1ID], map[string]any{"target": float64(6), "tested": float64(0), "learning": float64(0)}) {
+	if !reflect.DeepEqual(got[c.s1ID], map[string]any{"target": float64(6), "tested": float64(0), "learning": float64(0), "selfGraded": float64(0), "selfGradedRatio": nil}) {
 		t.Fatalf("概览 s1 = %v", got[c.s1ID])
 	}
 }

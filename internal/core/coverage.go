@@ -72,6 +72,8 @@ type CoverageAnswer struct {
 	Retake bool
 	// At 这次作答计入的时间（取所在组的交卷时间）。
 	At time.Time
+	// SelfGraded 所在组是学生账号自批的默写单（spec 0006）。
+	SelfGraded bool
 }
 
 // CoverageMemory 某个词的记忆状态（没学过为 nil）。
@@ -87,10 +89,18 @@ func (a CoverageAnswer) isFormal() bool {
 
 // WordCoverage 一个词的覆盖状态。
 func WordCoverage(answers []CoverageAnswer, memory *CoverageMemory) CoverageStatus {
+	s, _ := WordCoverageDetail(answers, memory)
+	return s
+}
+
+// WordCoverageDetail 一个词的覆盖状态，以及决定这个状态的那次正式测试（最近一次）是否自批（spec 0006）。
+// 未测时自批为 false；最近一次答错后靠记忆达到已掌握算「会了」的，仍以那次答错的组判定是否自批。
+func WordCoverageDetail(answers []CoverageAnswer, memory *CoverageMemory) (CoverageStatus, bool) {
 	type result struct {
-		at      time.Time
-		order   int
-		correct bool
+		at         time.Time
+		order      int
+		correct    bool
+		selfGraded bool
 	}
 	bySession := map[string]*result{}
 	for i, a := range answers {
@@ -99,7 +109,7 @@ func WordCoverage(answers []CoverageAnswer, memory *CoverageMemory) CoverageStat
 		}
 		r := bySession[a.SessionID]
 		if r == nil {
-			r = &result{at: a.At, order: i, correct: true}
+			r = &result{at: a.At, order: i, correct: true, selfGraded: a.SelfGraded}
 			bySession[a.SessionID] = r
 		}
 		if a.At.After(r.at) {
@@ -120,14 +130,26 @@ func WordCoverage(answers []CoverageAnswer, memory *CoverageMemory) CoverageStat
 	}
 	switch {
 	case last == nil:
-		return CoverageUntested
+		return CoverageUntested, false
 	case last.correct:
-		return CoverageKnown
+		return CoverageKnown, last.selfGraded
 	case memory != nil && MasteryLevel(memory.Stability) == "mastered" && memory.LastReview != nil && memory.LastReview.After(last.at):
-		return CoverageKnown
+		return CoverageKnown, last.selfGraded
 	default:
-		return CoverageLearning
+		return CoverageLearning, last.selfGraded
 	}
+}
+
+// CountSelfGraded 目标词（按书去重）里已测、且最近一次正式测试是自批的词数（班级概览「目标覆盖」旁的自批比例 = 它 / 已测）。
+func CountSelfGraded(status map[string]CoverageStatus, selfGraded map[string]bool, books []CoverageBook) int {
+	n := 0
+	for _, w := range CoverageWordOrder(books) {
+		st := status[w]
+		if (st == CoverageKnown || st == CoverageLearning) && selfGraded[w] {
+			n++
+		}
+	}
+	return n
 }
 
 // CoverageCounts 一组目标词的数字：Tested = Known + Learning，Target = Tested + Untested。

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"slices"
 	"testing"
+	"time"
 )
 
 // 默写单（spec 0006）：出题（题型、来源、要学优先）、明细（提示与答案）、批改（自批标记、只能提交一次、
@@ -240,6 +241,23 @@ func TestDictationCreateGradeFlow(t *testing.T) {
 	}
 	sessionID := g["sessionId"].(string)
 
+	// 今日页：批改后 sheet 不再是这份（没有其他单子 → null），gradedSheets 显示「已批改」
+	today := okData(t, c.do("GET", "/api/today", "", c.s1))
+	if today["sheet"] != nil {
+		t.Fatalf("today sheet after grading = %v", today["sheet"])
+	}
+	gs := listOf(today["gradedSheets"])
+	if len(gs) != 1 || gs[0]["id"] != sheetID || gs[0]["seq"] != float64(1) || gs[0]["itemCount"] != float64(5) || gs[0]["sessionId"] != sessionID ||
+		gs[0]["correct"] != float64(3) || gs[0]["total"] != float64(5) || gs[0]["selfGraded"] != true || gs[0]["gradedAt"] != "2026-10-06T04:00:00.000Z" {
+		t.Fatalf("gradedSheets = %v", gs)
+	}
+	// 第二天不再显示
+	c.now = c.now.Add(24 * time.Hour)
+	if gs := listOf(okData(t, c.do("GET", "/api/today", "", c.s1))["gradedSheets"]); len(gs) != 0 {
+		t.Fatalf("gradedSheets next day = %v", gs)
+	}
+	c.now = c.now.Add(-24 * time.Hour)
+
 	var n int
 	c.d.DB.QueryRow(`SELECT count(*) FROM "Answer" WHERE "sessionId" = ? AND "mode" = 'dictation' AND "phase" = 'test' AND "attempt" = 1`, sessionID).Scan(&n)
 	if n != 2 {
@@ -349,6 +367,45 @@ func TestDictationCreateGradeFlow(t *testing.T) {
 	st := okData(t, c.do("GET", "/api/sheets/"+selftest, "", c.s1))
 	if st["format"] != "selftest" || len(listOf(st["items"])) != 0 || st["grading"] != nil {
 		t.Fatalf("selftest detail = %v", st)
+	}
+}
+
+// 班级概览的目标覆盖旁带自批数与比例：按每个已测目标词最近一次正式测试是否自批。
+func TestDictationSelfGradedCoverage(t *testing.T) {
+	c := newDictEnv(t)
+	c.do("PUT", "/api/classes/c1/target-books", `{"bookIds":["b2"]}`, c.t1) // b2 = w4、w5
+	coverageOf := func(userID string) map[string]any {
+		t.Helper()
+		for _, s := range listOf(okData(t, c.do("GET", "/api/classes/c1/overview", "", c.t1))["students"]) {
+			if s["userId"] == userID {
+				return s["coverage"].(map[string]any)
+			}
+		}
+		t.Fatalf("student %s not in overview", userID)
+		return nil
+	}
+	if cov := coverageOf(c.s1ID); cov["tested"] != float64(0) || cov["selfGraded"] != float64(0) || cov["selfGradedRatio"] != nil {
+		t.Fatalf("初始 = %v", cov)
+	}
+
+	// 学生本人批改 w4、w5（自批）
+	s1Sheet := createDictation(t, c, c.s1, map[string]any{"items": []any{
+		map[string]any{"type": "word", "wordId": "w4"}, map[string]any{"type": "phrase", "wordId": "w5"},
+	}})
+	okData(t, c.do("POST", "/api/sheets/"+s1Sheet+"/grade", `{"results":[{"index":0,"correct":true},{"index":1,"correct":false}]}`, c.s1))
+	if cov := coverageOf(c.s1ID); cov["tested"] != float64(2) || cov["learning"] != float64(1) || cov["selfGraded"] != float64(2) || cov["selfGradedRatio"] != float64(1) {
+		t.Fatalf("自批后 = %v", cov)
+	}
+
+	// 老师复核 w4：w4 最近一次改为老师批改
+	tSheet := createDictation(t, c, c.t1, map[string]any{"userId": c.s1ID, "items": []any{map[string]any{"type": "word", "wordId": "w4"}}})
+	okData(t, c.do("POST", "/api/sheets/"+tSheet+"/grade", `{"results":[{"index":0,"correct":true}]}`, c.t1))
+	if cov := coverageOf(c.s1ID); cov["tested"] != float64(2) || cov["selfGraded"] != float64(1) || cov["selfGradedRatio"] != 0.5 {
+		t.Fatalf("老师复核后 = %v", cov)
+	}
+	// s2 没有作答
+	if cov := coverageOf(c.s2ID); cov["selfGraded"] != float64(0) || cov["selfGradedRatio"] != nil {
+		t.Fatalf("s2 = %v", cov)
 	}
 }
 

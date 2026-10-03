@@ -707,3 +707,51 @@ func NextSheet(ctx context.Context, q store.Querier, userID string) (*NextSheetV
 	n := list[next]
 	return &NextSheetView{ID: n.id, Seq: n.seq, WordCount: n.words, ActiveSessionID: n.activeID, Remaining: remaining, Format: n.format, ItemCount: n.items}, nil
 }
+
+// GradedSheetToday 今日已批改的默写单（spec 0006：今日页显示「默写单 #N · 已批改」）。
+type GradedSheetToday struct {
+	ID         string     `json:"id"`
+	Seq        int        `json:"seq"`
+	ItemCount  int        `json:"itemCount"`
+	SessionID  string     `json:"sessionId"`
+	Correct    int        `json:"correct"`
+	Total      int        `json:"total"`
+	SelfGraded bool       `json:"selfGraded"`
+	GradedAt   store.Time `json:"gradedAt"`
+}
+
+// SheetsGradedToday 今天（学习日 day）批改提交的默写单，按批改时间先后。批改后的默写单不再出现在 NextSheet 里，
+// 今日页用这个列表显示「已批改」。
+func SheetsGradedToday(ctx context.Context, q store.Querier, userID, day string) ([]GradedSheetToday, error) {
+	rows, err := q.QueryContext(ctx, `SELECT w."id", w."seq", w."items", s."id", s."status", s."result", s."snapshot", s."completedAt"
+		FROM "StudySession" s JOIN "WordSheet" w ON w."id" = s."sheetId"
+		WHERE w."userId" = ? AND w."format" = ? AND s."status" = 'completed' AND s."completedDay" = ?
+		ORDER BY s."completedAt", s.rowid`, userID, core.SheetFormatDictation, day)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []GradedSheetToday{}
+	for rows.Next() {
+		var g GradedSheetToday
+		var items store.JSON[[]core.DictationItem]
+		var b sheetSessionBrief
+		if err := rows.Scan(&g.ID, &g.Seq, &items, &b.id, &b.status, &b.result, &b.snapshot, &g.GradedAt); err != nil {
+			return nil, err
+		}
+		g.ItemCount = len(items.V)
+		g.SessionID = b.id
+		res, err := sheetFirstResult(&b)
+		if err != nil {
+			return nil, err
+		}
+		g.Correct, g.Total = res.Correct, res.Total
+		self, err := snapshotSelfGraded(b.snapshot)
+		if err != nil {
+			return nil, err
+		}
+		g.SelfGraded = self != nil && *self
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
