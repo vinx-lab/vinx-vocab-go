@@ -328,7 +328,7 @@ html:has(.vx-print-scope) body { background: #e8e8e8; }
 .vx-grade-answer { font-weight: 600; font-size: 17px; color: var(--ink); overflow-wrap: anywhere; }
 .vx-grade-mark { flex-shrink: 0; min-width: 56px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border-radius: 18px; color: var(--good); background: var(--good-soft); font-weight: 600; }
 .vx-grade-item.is-wrong .vx-grade-mark { color: #fff; background: var(--bad); }
-.vx-grade-bar { position: sticky; bottom: 0; background: var(--paper); padding: 12px 0; margin-top: 12px; display: flex; gap: 12px; align-items: center; border-top: 1px solid var(--line); }
+.vx-grade-bar { position: sticky; bottom: var(--tabbar-h, 0px); z-index: 1; background: var(--paper); padding: 12px 0; margin-top: 12px; display: flex; gap: 12px; align-items: center; border-top: 1px solid var(--line); }
 
 @media print {
   @page { size: A4; margin: 0; }

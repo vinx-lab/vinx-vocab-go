@@ -23,11 +23,11 @@ type Scope = "tab" | "browser";
 const ROLE_ORDER = ["admin", "teacher", "student"];
 
 const CSS = `
-.vx-dev-fab{position:fixed;right:8px;bottom:calc(88px + env(safe-area-inset-bottom));z-index:2000;display:flex;align-items:center;gap:6px;max-width:46vw;height:30px;padding:0 10px;border:none;border-radius:15px;font:600 12px/30px var(--sans,system-ui);color:#fff;background:rgba(80,80,80,.72);box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer;opacity:.85}
+.vx-dev-fab{position:fixed;right:8px;bottom:calc(140px + env(safe-area-inset-bottom));z-index:2000;display:flex;align-items:center;gap:6px;max-width:46vw;height:30px;padding:0 10px;border:none;border-radius:15px;font:600 12px/30px var(--sans,system-ui);color:#fff;background:rgba(80,80,80,.72);box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer;opacity:.85}
 .vx-dev-fab:hover{opacity:1}
 .vx-dev-fab-tab{background:#d4380d;opacity:.95}
 .vx-dev-fab span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.vx-dev-panel{position:fixed;right:8px;bottom:calc(124px + env(safe-area-inset-bottom));z-index:2001;width:min(360px,calc(100vw - 16px));max-height:min(560px,calc(100vh - 160px));display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line,#ddd);border-radius:8px;background:var(--surface,#fff);color:var(--ink,#222);box-shadow:0 6px 24px rgba(0,0,0,.2);font-size:13px}
+.vx-dev-panel{position:fixed;right:8px;bottom:calc(176px + env(safe-area-inset-bottom));z-index:2001;width:min(360px,calc(100vw - 16px));max-height:min(560px,calc(100vh - 212px));display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line,#ddd);border-radius:8px;background:var(--surface,#fff);color:var(--ink,#222);box-shadow:0 6px 24px rgba(0,0,0,.2);font-size:13px}
 .vx-dev-list{overflow:auto;flex:1;min-height:80px;margin:0 -4px}
 .vx-dev-group{padding:6px 4px 2px;font-weight:600;color:var(--muted,#888);font-size:12px}
 .vx-dev-row{display:block;width:100%;text-align:left;padding:6px 8px;border:none;border-radius:6px;background:none;color:inherit;cursor:pointer}

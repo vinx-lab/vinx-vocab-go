@@ -141,7 +141,8 @@ export function AppLayout({ children }: { children: ComponentChildren }) {
   const mobileTabs = learn.filter((i) => i.mobile);
 
   return (
-    <Layout style={{ minHeight: "100vh" }} className="vx-paper" hasSider={!isMobile}>
+    // --tabbar-h：手机底部导航占的高度，页面里贴底的元素（如批改页的提交栏）据此让开
+    <Layout style={{ minHeight: "100vh", ["--tabbar-h" as string]: isMobile && mobileTabs.length > 1 ? "calc(64px + env(safe-area-inset-bottom))" : "0px" }} className="vx-paper" hasSider={!isMobile}>
       {!isMobile && (
         <Sider width={216} theme="light" style={{ background: "var(--paper-deep)", borderRight: "1px solid var(--line)", position: "sticky", top: 0, height: "100vh", overflow: "auto" }}>
           {brand}

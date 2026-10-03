@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { login } from "../support/helpers";
-import { apiOk, importBook, letters, newClassWithStudent, newTeacher } from "../support/school";
+import { apiOk, importBook, letters, newClassWithStudent, newTeacher, wordIds } from "../support/school";
 
 /**
  * 默写单（spec 0006）：出一份包含单词、短语、句子的默写单 → 打印页显示题目页和答案页 → 批改页标两道错题并提交
@@ -112,6 +112,39 @@ test.describe("默写单", () => {
     const learningTab = page.locator(".ant-segmented-item", { hasText: "要学 1" });
     await expect(learningTab).toBeVisible();
     await expect(page.getByText(wrongWord, { exact: true }).first()).toBeVisible();
+
+    await ctx.close();
+    await teacher.api.dispose();
+    await student.api.dispose();
+  });
+  test("手机上批改页的提交栏不被底部导航挡住", async ({ browser }) => {
+    const teacher = await newTeacher("默写老师");
+    const { student } = await newClassWithStudent(teacher, "默写班", "默写同学");
+    const tag = letters();
+    const words = Array.from({ length: 20 }, (_, i) => ({ spelling: `e2emobile${tag}${String.fromCharCode(97 + i)}`, definition: `手机${i}`, partOfSpeech: "n." }));
+    const book = await importBook(teacher.api, "手机默写", [{ name: "Unit 1", entries: words }]);
+    const ids = await wordIds(teacher.api, book.unitIds[0]);
+    const created = await apiOk<{ id: string }>(
+      await student.api.post("/api/sheets", { data: { format: "dictation", items: Object.values(ids).map((wordId) => ({ type: "word", wordId })) } }),
+    );
+
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const page = await ctx.newPage();
+    await login(page, student.email);
+    await expect(page).toHaveURL(/\/today/);
+    await page.goto(`/sheets/${created.id}/grade`);
+    await expect(page.locator(".vx-grade-item")).toHaveCount(20);
+    const submit = page.getByRole("button", { name: "提交批改" });
+    await expect(submit).toBeInViewport();
+    // 按钮中心点上最上层的元素必须是按钮自己（没被固定的底部导航盖住）
+    const onTop = await submit.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return !!hit && el.contains(hit);
+    });
+    expect(onTop).toBe(true);
+    await submit.click();
+    await expect(page.getByRole("button", { name: "确认提交" })).toBeVisible();
 
     await ctx.close();
     await teacher.api.dispose();

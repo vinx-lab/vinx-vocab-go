@@ -331,7 +331,7 @@ export function SheetNewPage() {
         {lead}
       </PageHeader>
 
-      <div className="vx-card" style={{ padding: 16, display: "grid", gap: 14, marginBottom: 14 }}>
+      <div className="vx-card" style={{ padding: 16, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 14, marginBottom: 14 }}>
         {!from && (
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <span>格式</span>
@@ -363,21 +363,24 @@ export function SheetNewPage() {
         {!from && (!dict || wordsWanted) && (
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <span>{dict ? "词的来源" : "选词来源"}</span>
-            <Segmented<SourceKind>
-              value={sourceKind}
-              onChange={(v) => setSourceKind(v)}
-              options={[
-                { label: "不熟的词", value: "unfamiliar" },
-                { label: "某次测试的错词", value: "session" },
-                { label: "某个单元", value: "unit" },
-                ...(showTargets
-                  ? [
-                      { label: "目标：未测的词", value: "targetUntested" as SourceKind },
-                      { label: "目标：要学的词", value: "targetLearning" as SourceKind },
-                    ]
-                  : []),
-              ]}
-            />
+            {/* 来源选项较多，窄屏上在这一行里横向滑动，不撑宽卡片 */}
+            <div style={{ maxWidth: "100%", overflowX: "auto" }}>
+              <Segmented<SourceKind>
+                value={sourceKind}
+                onChange={(v) => setSourceKind(v)}
+                options={[
+                  { label: "不熟的词", value: "unfamiliar" },
+                  { label: "某次测试的错词", value: "session" },
+                  { label: "某个单元", value: "unit" },
+                  ...(showTargets
+                    ? [
+                        { label: "目标：未测的词", value: "targetUntested" as SourceKind },
+                        { label: "目标：要学的词", value: "targetLearning" as SourceKind },
+                      ]
+                    : []),
+                ]}
+              />
+            </div>
             {targetStatus && (
               <Select
                 style={{ minWidth: 220 }}
@@ -627,7 +630,7 @@ export function SheetNewPage() {
         </>
       )}
 
-      <div style={{ position: "sticky", bottom: 0, background: "var(--paper)", padding: "12px 0", marginTop: 12, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ position: "sticky", bottom: "var(--tabbar-h, 0px)", zIndex: 1, background: "var(--paper)", padding: "12px 0", marginTop: 12, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         {dict ? (
           <span style={{ flex: 1, color: "error" in dictSplit ? "var(--bad)" : "var(--ink-soft)" }}>
             已选 {dictItems.length} 题
