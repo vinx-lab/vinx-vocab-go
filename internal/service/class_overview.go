@@ -46,6 +46,8 @@ type ClassStudentRow struct {
 	Accuracy7d    core.Accuracy     `json:"accuracy7d"`
 	Minutes7d     int               `json:"minutes7d"`
 	ActiveDays7   int               `json:"activeDays7"`
+	// Coverage 目标覆盖（spec 0003）：按学生自己的有效目标（所在全部班级目标的并集）；没有目标为 null。
+	Coverage *ClassStudentCoverage `json:"coverage"`
 }
 
 // ClassOverviewSummary 全班今日汇总。
@@ -197,6 +199,10 @@ func ClassOverview(ctx context.Context, q store.Querier, loc *time.Location, now
 	if err != nil {
 		return nil, err
 	}
+	coverage, err := classCoverage(ctx, q, userIDs)
+	if err != nil {
+		return nil, err
+	}
 
 	v.Students = make([]ClassStudentRow, 0, len(members))
 	for _, m := range members {
@@ -256,6 +262,7 @@ func ClassOverview(ctx context.Context, q store.Querier, loc *time.Location, now
 				Answers: len(todayAnswers), Minutes: core.ActiveMinutes(todayAnswers),
 			},
 			Accuracy7d: core.AccuracyOf(mine7), Minutes7d: core.ActiveMinutes(mine7), ActiveDays7: activeDays7,
+			Coverage: coverage[m.id],
 		})
 	}
 

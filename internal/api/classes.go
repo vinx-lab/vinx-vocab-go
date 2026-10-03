@@ -204,6 +204,37 @@ func registerClasses(r *Router, d *Deps) {
 		return nil
 	}, guard)
 
+	// 班级目标词书（spec 0003）：本班老师、班级版管理员可看可改；整体替换，顺序即 sortOrder
+	cr.Get("/classes/{id}/target-books", func(w http.ResponseWriter, req *http.Request) error {
+		_, id, err := manage(req)
+		if err != nil {
+			return err
+		}
+		items, err := service.ClassTargetBooks(req.Context(), d.DB, id)
+		if err != nil {
+			return err
+		}
+		httpx.OK(w, httpx.List(items))
+		return nil
+	}, guard)
+
+	cr.Put("/classes/{id}/target-books", func(w http.ResponseWriter, req *http.Request) error {
+		actor, id, err := manage(req)
+		if err != nil {
+			return err
+		}
+		body, err := httpx.Decode[targetBooksBody](req)
+		if err != nil {
+			return err
+		}
+		items, err := service.SetClassTargetBooks(req.Context(), d.DB, actor, id, body.bookIDs)
+		if err != nil {
+			return err
+		}
+		httpx.OK(w, httpx.List(items))
+		return nil
+	}, guard)
+
 	// 按账号添加已有学生：老师只能添加自己批量创建的账号（其他学生需凭邀请码自愿加入）；管理员不限
 	cr.Post("/classes/{id}/members", func(w http.ResponseWriter, req *http.Request) error {
 		actor, id, err := manage(req)

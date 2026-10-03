@@ -126,6 +126,31 @@ func VisibleBookFilter(ctx context.Context, q store.Querier, a *Actor, alias str
 	return sql, store.Args(owners), nil
 }
 
+// AssertBooksVisible 这些词书都存在且操作者可见（目标词书的可选范围与浏览词书相同，spec 0003）；
+// 否则 400「有词书不存在或不可见」。ids 需已去重。
+func AssertBooksVisible(ctx context.Context, q store.Querier, a *Actor, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	filter, args, err := VisibleBookFilter(ctx, q, a, "b")
+	if err != nil {
+		return err
+	}
+	var n int
+	if err := q.QueryRowContext(ctx, `SELECT count(*) FROM "Book" b WHERE b."id" IN (`+store.Placeholders(len(ids))+`) AND `+filter,
+		append(store.Args(ids), args...)...).Scan(&n); err != nil {
+		return err
+	}
+	if n != len(ids) {
+		return httpx.Validation("有词书不存在或不可见")
+	}
+	return nil
+}
+
+// TargetUsesClasses 确定目标词书时是否看班级成员关系：班级版看（有班级用班级目标）；
+// 个人版不看（班级功能关闭、无法退班，只用自己设的目标）。
+func TargetUsesClasses(a *Actor) bool { return !IsPersonal(a) }
+
 // EditableBook 可编辑词书的归属信息。
 type EditableBook struct {
 	OwnerID  *string

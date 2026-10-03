@@ -184,11 +184,18 @@ func sheetWordDetails(ctx context.Context, q store.Querier, ids []string) (map[s
 
 // SheetSource 选词来源：不熟的词（默认）/ 某次测试的错词 / 某个单元 / 整本书（旧 SheetSource 可辨识联合）。
 type SheetSource struct {
-	Kind      string // unfamiliar | session | unit | book
+	Kind      string // unfamiliar | session | unit | book | target
 	SessionID string
 	UnitID    string
-	BookID    string
+	BookID    string // book：整本书；target：只出这本目标词书的词（空 = 全部目标词）
+	// Status target 来源：untested（目标：未测的词）| learning（目标：要学的词）（spec 0003）。
+	Status string
+	// UseClasses target 来源确定目标词书时是否看班级（TargetUsesClasses，由路由按本次请求的版本填）。
+	UseClasses bool
 }
+
+// SheetTargetStatuses target 来源可选的状态。
+var SheetTargetStatuses = []string{core.CoverageUntested, core.CoverageLearning}
 
 // SheetPreviewItem 预览里的一个词。
 type SheetPreviewItem struct {
@@ -241,6 +248,13 @@ func PreviewSheet(ctx context.Context, db *store.DB, loc *time.Location, now tim
 			return nil, err
 		}
 		picks = core.SelectFromPool(pool, candidates, core.PoolOptions{Now: now, Count: count, KeepFamiliar: false})
+	case "target":
+		// 目标词按书序；未测 / 要学的词都是要正式测一次的，不按记忆排除已掌握的
+		pool, _, err := targetWordIDs(ctx, db, source.UseClasses, userID, source.BookID, source.Status)
+		if err != nil {
+			return nil, err
+		}
+		picks = core.SelectFromPool(pool, candidates, core.PoolOptions{Now: now, Count: count, KeepFamiliar: true})
 	default:
 		exclude, err := pendingSheetWordIDs(ctx, db, userID)
 		if err != nil {

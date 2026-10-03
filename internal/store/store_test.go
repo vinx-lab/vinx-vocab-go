@@ -37,9 +37,10 @@ func TestMigrateCreatesAllTables(t *testing.T) {
 		names = append(names, n)
 	}
 	rows.Close()
-	want := []string{"Answer", "AppSetting", "Book", "ClassMember", "Classroom", "MemoryState", "Passage", "Plan", "PlanTarget", "PlanUnit", "ReviewLog", "StudySession", "Unit", "UnitWord", "User", "Word", "WordSheet"}
+	want := []string{"Answer", "AppSetting", "Book", "ClassMember", "Classroom", "MemoryState", "Passage", "Plan", "PlanTarget", "PlanUnit", "ReviewLog", "StudySession", "Unit", "UnitWord", "User", "Word", "WordSheet",
+		"ClassTargetBook", "UserTargetBook"} // 0002_target_books
 	sort.Strings(want)
-	if len(names) != 17 || !equal(names, want) {
+	if !equal(names, want) {
 		t.Fatalf("tables = %v", names)
 	}
 	var idx int
@@ -331,9 +332,11 @@ func TestBackupBeforePendingMigrationKeepsThree(t *testing.T) {
 	if err := bak2.QueryRow(`SELECT count(*) FROM "Extra"`).Scan(&n); err == nil {
 		t.Fatal("备份应是迁移前的状态")
 	}
+	// 前面按真实迁移目录建库（已执行全部内置迁移），这里再加上 0002_extra
+	builtin, _ := fs.ReadDir(migrationsFS, "migrations")
 	var versions int
 	db3.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&versions)
-	if versions != 2 {
+	if versions != len(builtin)+1 {
 		t.Fatalf("schema_migrations = %d", versions)
 	}
 }

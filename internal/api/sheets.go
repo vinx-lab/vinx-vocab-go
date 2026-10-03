@@ -17,6 +17,10 @@ import (
 
 var sheetSourceKindValues = []string{"unfamiliar", "session", "unit", "book"}
 
+// sheetSourceTarget 目标词书来源（spec 0003）：{ kind: "target", status: "untested" | "learning", bookId? }。
+// 不放进 sheetSourceKindValues：无效 kind 的错误信息沿用原有的四个取值（契约测试固定了原文）。
+const sheetSourceTarget = "target"
+
 // ===== 请求体 =====
 
 // sheetSourceBody 选词来源（旧 discriminatedUnion("kind", [...])）。
@@ -25,6 +29,7 @@ type sheetSourceBody struct {
 	SessionID httpx.Opt[string] `json:"sessionId"`
 	UnitID    httpx.Opt[string] `json:"unitId"`
 	BookID    httpx.Opt[string] `json:"bookId"`
+	Status    httpx.Opt[string] `json:"status"`
 }
 
 // validateSheetSource 手动实现 zod discriminatedUnion 的行为：kind 不在枚举里（含缺省、null、类型错）
@@ -48,11 +53,17 @@ func validateSheetSource(v *httpx.V, path string, o httpx.Opt[sheetSourceBody]) 
 	if b.Kind.Set && !b.Kind.Null {
 		kind = b.Kind.Val
 	}
-	if !b.Kind.Set || b.Kind.Null || !slices.Contains(sheetSourceKindValues, kind) {
+	if !b.Kind.Set || b.Kind.Null || (!slices.Contains(sheetSourceKindValues, kind) && kind != sheetSourceTarget) {
 		v.Add(kindPath, "Invalid discriminator value. Expected 'unfamiliar' | 'session' | 'unit' | 'book'")
 		return nil
 	}
 	switch kind {
+	case sheetSourceTarget:
+		src := &service.SheetSource{Kind: kind, Status: v.Enum(path+".status", b.Status, service.SheetTargetStatuses, "")}
+		if s := v.OptStr(path+".bookId", b.BookID, httpx.Min(1)); s != nil {
+			src.BookID = *s
+		}
+		return src
 	case "session":
 		return &service.SheetSource{Kind: kind, SessionID: v.Str(path+".sessionId", b.SessionID, httpx.Min(1))}
 	case "unit":
@@ -218,6 +229,10 @@ func registerSheets(r *Router, d *Deps) {
 		}
 		if err := assertSheetSource(ctx, d, actor, userID, body.source); err != nil {
 			return err
+		}
+		if body.source != nil && body.source.Kind == sheetSourceTarget {
+			// 目标词书按目标学生确定（范围已由 targetBodyUser 判定），版本按本次请求
+			body.source.UseClasses = service.TargetUsesClasses(actor)
 		}
 		out, err := service.PreviewSheet(ctx, d.DB, d.Cfg.Location, d.Now(), userID, body.count, body.include, body.source)
 		if err != nil {
