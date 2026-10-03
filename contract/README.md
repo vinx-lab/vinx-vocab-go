@@ -15,7 +15,12 @@ BASE_URL=http://localhost:3200/api pnpm -C contract test
 
 # 另起一个个人版实例时，顺带验证个人版
 BASE_URL=... PERSONAL_BASE_URL=http://localhost:3201/api pnpm -C contract test
+
+# 另起一个 `serve --dev` 实例（seed-demo 数据）时，顺带验证开发模式免密切换（spec 0002）
+BASE_URL=... DEV_BASE_URL=http://localhost:3202/api pnpm -C contract test
 ```
+
+- `DEV_BASE_URL`：以 `--dev` 启动的实例。没设时 `dev.spec.ts` 只验证 `BASE_URL`（不加 `--dev`）上 `/dev/*` 是 404、`/config` 的 `dev` 为 `false`，免密切换那一组跳过。`BASE_URL` 本身不能是 `--dev` 实例。
 
 - **只设 `BASE_URL`，一个变量**：以 `/api` 结尾视为 Go（`TARGET=go`），否则视为 oracle。目标解析集中在
   `lib/target.ts`，被 `vitest.config.ts`、`lib/global-setup.ts`、`lib/client.ts` 三处共用，不要在别处重新判断。
@@ -42,7 +47,8 @@ BASE_URL=... PERSONAL_BASE_URL=http://localhost:3201/api pnpm -C contract test
 | `lib/target.ts` | `resolveTarget()`：合并 `BASE_URL` / `CONTRACT_BASE_URL` / `TARGET` 三个环境变量、校验一致性（冲突抛错），唯一真相来源 |
 | `lib/global-setup.ts` | Vitest `globalSetup`：打印目标、探测 `${BASE_URL}/health`（核对 `X-Vinx-Vocab` 头与 `TARGET` 相符），不符就在跑任何用例之前中止 |
 | `lib/client.ts` | `Client`（自带 cookie jar）、`anon()`、`login(email, pwd)`、`call(client, method, url, body)` → `{ status, body }` |
-| `lib/shape.ts` | `shapeOf(value)` 把 JSON 转成结构描述（类型、null、数组元素结构、对象键集合，UTC 毫秒时间串记为 `datetime`）；`expectShape(name, value)` 在 oracle 上写 `shapes/<name>.json`，在 Go 上比对 |
+| `lib/shape.ts` | `shapeOf(value)` 把 JSON 转成结构描述（类型、null、数组元素结构、对象键集合，UTC 毫秒时间串记为 `datetime`）；`expectShape(name, value)` 在 oracle 上写 `shapes/<name>.json`，在 Go 上比对。`GO_ADDED` 登记单文件版在快照之外新增的字段（ADR 0004）：Go 上先断言这些字段存在，再去掉后与快照全等比对 |
+| `lib/fixtures.ts` | Go 专属用例的建数据助手：老师、班级与凭邀请码入班的学生、用 `/books/import` 建好的词书（可带句型 / 课文）、AI 任务轮询 |
 | `lib/areas.ts` | 按模块分批移植：`GO_AREAS` 列出 Go 已实现的模块，`ready(...areas)` 为假时（仅 Go）跳过对应用例；`goOnly` 标记只在 Go 上跑的用例 |
 | `specs/*.spec.ts` | 用例，由旧 `apps/api/tests/*.test.ts` 改写 |
 | `shapes/` | oracle 录下的响应结构快照（跑 oracle 时自动刷新，入库） |
@@ -51,7 +57,7 @@ BASE_URL=... PERSONAL_BASE_URL=http://localhost:3201/api pnpm -C contract test
 | `scripts/fsrs-fixtures.mjs` | 用旧仓库依赖里的 ts-fsrs 5.4.2 生成 FSRS 对照数据 `internal/core/fsrs/testdata/fixtures.json`（Go 单测逐步比对）；参数：旧仓库目录，默认与本仓库同级的 `vinx-vocab` |
 | `lib/study.ts` | 学习流用例的助手：注册新学生、取 seed 系统词书单元、按快照作答 |
 
-后续任务实现一个模块后：写 `specs/<area>.spec.ts` → oracle 跑绿（生成结构快照）→ 实现 Go → 把模块名加进 `lib/areas.ts` 的 `GO_AREAS` → Go 跑绿。
+以单文件版为准之后（ADR 0004）：新功能的用例整组用 `describe.runIf(goOnly)`，只对 Go 运行，直接断言字段的值与类型，不调用 `expectShape`（没有 oracle 快照）。现有接口只增字段时，不改快照，把新字段登记进 `lib/shape.ts` 的 `GO_ADDED`，字段的含义由 Go 专属用例断言。
 
 ## 与旧测试的差异（改成黑盒后）
 
@@ -70,7 +76,18 @@ BASE_URL=... PERSONAL_BASE_URL=http://localhost:3201/api pnpm -C contract test
 
 - `classes` / `users`（旧版没有对应的流程测试，按 `school/classes.routes.ts`、`routes/users.ts` 新写）：每个用例用管理员新建自己的老师账号与班级，不依赖其他用例的数据。「系统至少保留一个管理员」需要库里恰好一个管理员，共享库上不稳定，由 Go 单测 `internal/api/edition_test.go` 覆盖。
 - `edition-switch`（只在 Go 上跑）：运行时版本切换（`PUT /settings/edition`）与首次运行接口（`POST /setup/edition`）是 Go 版新增的，oracle 没有。用例会把实例切到个人版、验证降级后的 404 / 注册关闭 / 数据范围，最后（含失败时）切回班级版；被测实例须未设 `VINX_EDITION`。全新安装走向导、锁定版本、并发选择由 Go 单测覆盖。
-- `edition` 的 `/config` 结构快照：Go 多出的 `editionLocked`、`needsSetup` 两个字段只在 Go 上断言类型，比对结构前去掉。
+- `edition` 的 `/config` 结构快照：Go 多出的 `editionLocked`、`needsSetup` 两个字段只在 Go 上断言类型，比对结构前去掉；spec 0002 的 `dev` 登记在 `GO_ADDED`。
+- `settings-prompts`：spec 0005 的默认模板带 `{学段}` 等占位符，预览时替换成具体文字；Go 上「预览以默认模板开头」按占位符匹配一段不含换行的文字，其余逐字比对，并要求预览里没有残留的占位符。
+
+## 单文件版新增（只在 Go 上跑，ADR 0004）
+
+| 用例 | spec | 内容 |
+|---|---|---|
+| `dev.spec.ts` | 0002 | 不加 `--dev` 时 `/dev/*` 404、`config.dev` 为假；`DEV_BASE_URL` 上：账号列表排序、`scope=tab` 只返回令牌不写 Cookie（Bearer 优先于 Cookie）、`scope=browser` 写 Cookie、校验与 Origin 检查 |
+| `coverage.spec.ts` | 0003 | 班级 / 我的目标词书与权限、覆盖进度与词表、班级概览 `coverage`、默写单批改与在线单词单两种正式测试后的数字变化、「目标：未测 / 要学」出单词单 |
+| `sentences.spec.ts` | 0004 | 单元的篇增删改查与排序、词书导入与粘贴导入带句型 / 课文、`/words/:id/sentences`、`/sentences/analyze`、权限（别人的单元 403、看不到的词书 404） |
+| `aigen.spec.ts` | 0005 | 提示词 4 项、词书学段、句型 / 仿写的预览 → 生成草稿 → 保存、重写一句、逐句短文与 `/passages/:id` 的 `sentences`、新接口权限（用 `lib/fake-ai.ts`） |
+| `dictation.spec.ts` | 0006 | 默写单出题、明细、不能在线测、今日页待批改 / 已批改、批改（全部题目、自批、409）、列表 / 记录的自批标记、错题再出一份、权限、概览自批比例 |
 
 ## 未覆盖
 

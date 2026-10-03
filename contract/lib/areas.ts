@@ -28,5 +28,9 @@ export function ready(...areas: Area[]): boolean {
   return areas.every((a) => GO_AREAS.includes(a));
 }
 
-/** 只在 Go 上验证的用例（Go 版新增或与 oracle 开发模式行为不同的约定，如 Origin 检查） */
+/**
+ * 只在 Go 上验证的用例（Go 版新增或与 oracle 开发模式行为不同的约定，如 Origin 检查）。
+ * ADR 0004 之后的新功能（spec 0002–0006：dev、coverage、sentences、aigen、dictation）只在单文件版实现，
+ * 对应用例整组用 `describe.runIf(goOnly)`，不进 Area / GO_AREAS（ready() 在 oracle 上恒为真，挡不住）。
+ */
 export const goOnly = TARGET === "go";
