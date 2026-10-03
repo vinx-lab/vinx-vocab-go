@@ -1,6 +1,6 @@
 # 架构与约定（Go 单文件版）
 
-本文件是后端各任务的共同约定。旧版（Node + Fastify + Prisma + PostgreSQL，下称 **oracle**）就是规格：路径、方法、请求字段、响应包络、字段名、`null` 与缺省、时间格式、错误码与中文 message、HTTP 状态码都与旧版一致。需求背景见 [spec 0001](specs/0001-go-single-binary.md)。
+本文件是后端各任务的共同约定。重写阶段以旧版（Node + Fastify + Prisma + PostgreSQL，下称 **oracle**）为规格：路径、方法、请求字段、响应包络、字段名、`null` 与缺省、时间格式、错误码与中文 message、HTTP 状态码都与旧版一致，需求背景见 [spec 0001](specs/0001-go-single-binary.md)。重写完成后**以单文件版为准**（[ADR 0004](architecture-decisions/0004-single-binary-is-source-of-truth.md)）：已有接口保持上述约定不变，新功能按 `docs/specs/` 设计，只增字段、不改已有字段的含义。
 
 ## 目录与包职责
 
@@ -196,7 +196,7 @@ func (b *profileBody) Validate(v *httpx.V) {
 
 - `internal/core`：表驱动单测，用例逐条翻译旧 `apps/api/tests/lib/*.test.ts`。
 - 服务与接口：`internal/api/api_test.go` 的 `newEnv(t, env)` 夹具（临时库 + 固定时钟 + `Handler`），`e.do(method, path, body, headers)`。
-- 契约：`contract/`，先对 oracle 跑绿再对 Go 跑绿；新模块在 `contract/lib/areas.ts` 的 `GO_AREAS` 登记后才会在 Go 上启用。
+- 契约：`contract/`。重写阶段的用例先对 oracle 跑绿再对 Go 跑绿，现在作为回归测试保留；新功能的用例只对 Go 运行（ADR 0004）。新模块在 `contract/lib/areas.ts` 的 `GO_AREAS` 登记后才会在 Go 上启用。
 - 导入测试（`internal/migrate`）需要 PostgreSQL：`VINX_TEST_PG_URL=postgresql://…/postgres make test-import`（角色要能 CREATE DATABASE，每个测试建临时库并删除；缺变量时失败而不是跳过）。`make test` 在设了该变量时一并运行，没设时跳过并在末尾打印提示。
 - 命令：`make test`（Go 单测）、`make contract`、`make build`（构建前端并嵌入，产出本机 `dist/vinx-vocab`）、`make cross`（`dist/vinx-vocab.exe` windows/amd64 与 `dist/vinx-vocab` linux/amd64，`CGO_ENABLED=0`，版本号经 `-ldflags -X main.version` 注入）、`make e2e`（构建后用 `e2e/run.sh` 起两个实例跑 Playwright，见 `e2e/README.md`）。
 - Windows 资源：`make winres` 用 go-winres（`go run github.com/tc-hib/go-winres@v0.3.3`，首次运行从 Go 模块代理下载）把 `cmd/vinx-vocab/winres/`（`icon.png`、`winres.json`）生成 `cmd/vinx-vocab/rsrc_windows_amd64.syso`（不入库，只在 windows 构建时链接）：exe 图标、文件版本（`VERSION` 里的 x.y.z，否则 0.0.0）与产品版本字符串（`VERSION` 原样）。图标由同目录 `gen_icon.go`（`go run gen_icon.go`）生成。

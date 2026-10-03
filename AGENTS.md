@@ -4,7 +4,7 @@
 
 ## 定位与事实边界
 
-Vinx Vocab 单文件版是服务器版（Node + Fastify + Prisma + PostgreSQL，下称**旧版**）的 Go 重写：一个可执行文件内含 SQLite 与嵌入的前端，Windows 双击即用，Linux 版可做班级服务器。**功能、接口契约、页面与交互都以旧版为准**；有意的偏差写在 [docs/architecture.md](docs/architecture.md) 与 [docs/decisions.md](docs/decisions.md)。先读 `README.md`，再按任务读 `docs/`。
+Vinx Vocab 单文件版是服务器版（Node + Fastify + Prisma + PostgreSQL，下称**旧版**）的 Go 重写：一个可执行文件内含 SQLite 与嵌入的前端，Windows 双击即用，Linux 版可做班级服务器。重写已完成，**此后以单文件版为准**（[ADR 0004](docs/architecture-decisions/0004-single-binary-is-source-of-truth.md)）：新功能只在本仓库按 `docs/specs/` 实现，旧版冻结只修 bug；现有契约用例作回归，新用例只对单文件版运行。先读 `README.md`，再按任务读 `docs/`。
 
 不得把配置示例称为已部署，不得把拟定的方案称为已实现、已验证，不得依据历史记录判断服务当前仍在运行。
 

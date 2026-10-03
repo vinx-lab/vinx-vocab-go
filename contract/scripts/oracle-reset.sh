@@ -2,7 +2,7 @@
 # 重建 oracle 库（只动 vinx_oracle）：drop/create → 旧仓库 prisma migrate deploy → seed，然后重启 oracle API。
 #
 # 环境变量：
-#   OLD_REPO      旧仓库根目录（默认 ~/projects/vinx-vocab）
+#   OLD_REPO      旧仓库根目录（默认 ~/work/products/vinx-vocab）
 #   ORACLE_DB     库名（默认 vinx_oracle；出于安全只允许 vinx_oracle*）
 #   ORACLE_TMUX   运行 oracle API 的 tmux 目标（默认 vinx-oracle；设为空则不重启）。
 #                 oracle 须作为该 pane 的启动命令运行（tmux new-session -d -s vinx-oracle "<命令>"），

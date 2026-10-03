@@ -10,9 +10,10 @@
 
 | 编号 | 标题 | 状态 |
 |---|---|---|
-| [0001](0001-go-single-binary.md) | 单文件：Go + SQLite + 嵌入 Preact 前端 | 已采纳 |
+| [0001](0001-go-single-binary.md) | 单文件：Go + SQLite + 嵌入 Preact 前端 | 已采纳（「以旧版为规格」一条已被 0004 取代） |
 | [0002](0002-jwt-httponly-cookie.md) | 认证用 JWT + HttpOnly Cookie | 已采纳 |
 | [0003](0003-realtime-today-queue-fsrs.md) | 今日队列实时计算 + FSRS | 已采纳 |
+| [0004](0004-single-binary-is-source-of-truth.md) | 以单文件版为准，服务器版冻结 | 已采纳 |
 
 ## 规则
 

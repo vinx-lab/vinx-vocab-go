@@ -1,6 +1,6 @@
 # 0001 单文件：Go + SQLite + 嵌入 Preact 前端
 
-状态：已采纳
+状态：已采纳（「以旧版为规格」一条已被 [0004](0004-single-binary-is-source-of-truth.md) 取代）
 
 ## 背景
 
