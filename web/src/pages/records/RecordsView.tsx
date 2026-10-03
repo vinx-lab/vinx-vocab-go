@@ -9,6 +9,7 @@ import type { DailyPoint, Paged, RecordsSummary, SessionKind, SessionListItem } 
 import { KIND_LABEL } from "@/types";
 import { EmptyBlock, ErrorBlock, KindTag, Loading, StatTile, percent } from "@/components/ui";
 import { DailyWordsChart, MasteryBar } from "@/components/charts";
+import { CoverageSection } from "@/pages/coverage/components";
 import { fmtDay, fmtTime, withUser } from "./shared";
 
 const PAGE_SIZE = 20;
@@ -48,6 +49,8 @@ export function RecordsView({ userId }: { userId?: string }) {
           <StatTile label="今天到期" value={s.dueToday} suffix="词" hint={s.today.reviewLeft ? `待复习 ${s.today.reviewLeft} 词` : undefined} />
         </Col>
       </Row>
+
+      <CoverageSection userId={userId} />
 
       <div className="vx-card" style={{ padding: 16 }}>
         <SectionTitle title="记忆分布" />

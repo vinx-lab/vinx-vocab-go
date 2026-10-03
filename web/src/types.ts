@@ -70,7 +70,13 @@ export type SheetReason =
   | { kind: "unlearned" };
 
 /** 选词来源 */
-export type SheetSource = { kind: "unfamiliar" } | { kind: "session"; sessionId: string } | { kind: "unit"; unitId: string } | { kind: "book"; bookId: string };
+export type SheetSource =
+  | { kind: "unfamiliar" }
+  | { kind: "session"; sessionId: string }
+  | { kind: "unit"; unitId: string }
+  | { kind: "book"; bookId: string }
+  /** 目标：未测的词 / 要学的词（spec 0003）；bookId 省略时为全部目标词 */
+  | { kind: "target"; status: TargetSheetStatus; bookId?: string };
 
 /** 「某次测试的错词」可选的学习组 */
 export interface SheetSourceSession {
@@ -375,9 +381,63 @@ export interface ClassOverview {
     accuracy7d: Accuracy;
     minutes7d: number;
     activeDays7: number;
+    /** 目标覆盖（spec 0003）：按学生自己的有效目标；没有目标为 null */
+    coverage: ClassStudentCoverage | null;
   }[];
   hardWords: { wordId: string; spelling: string; definition: string; wrong: number; total: number; rate: number }[];
   activeByDay: { day: string; activeStudents: number; answers: number; accuracy: number | null }[];
+}
+
+// ---------------- 目标词书与覆盖进度（spec 0003） ----------------
+
+/** 每个目标词的覆盖状态：未测 / 要学 / 会了 */
+export type CoverageStatus = "untested" | "learning" | "known";
+/** 单词单 target 来源可选的状态 */
+export type TargetSheetStatus = "untested" | "learning";
+
+/** 目标里的一本词书（GET/PUT /classes/:id/target-books、/me/target-books） */
+export interface TargetBook {
+  id: string;
+  name: string;
+}
+
+/** GET /me/target-books：source 为 class 时 classes 是所在班级，books 为班级目标的并集 */
+export interface MyTargetBooks {
+  source: "class" | "own" | "none";
+  classes: { id: string; name: string }[];
+  books: TargetBook[];
+}
+
+export interface CoverageCounts {
+  target: number;
+  tested: number;
+  known: number;
+  learning: number;
+  untested: number;
+}
+
+/** GET /records/coverage */
+export interface CoverageData {
+  source: MyTargetBooks["source"];
+  total: CoverageCounts;
+  books: (CoverageCounts & { bookId: string; name: string })[];
+}
+
+/** GET /records/coverage/words 的一项 */
+export interface CoverageWord {
+  wordId: string;
+  spelling: string;
+  phonetic: string | null;
+  partOfSpeech: string | null;
+  definition: string;
+  status: CoverageStatus;
+}
+
+/** 班级概览里学生的覆盖数字 */
+export interface ClassStudentCoverage {
+  target: number;
+  tested: number;
+  learning: number;
 }
 
 export interface MyClass {

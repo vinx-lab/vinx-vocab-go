@@ -1,5 +1,7 @@
 import { useState } from "preact/hooks";
-import { Col, Row, Table, Tag, type ColumnType } from "@/ui";
+import { Alert, Button, Col, Row, Table, Tag, type ColumnType } from "@/ui";
+import { coverageRateOrder, testedRate } from "@/pages/coverage/coverage";
+import { useClassTargets } from "./ClassTargetsTab";
 import { useQuery } from "@/lib/query";
 import { Link } from "@/lib/router";
 import { api } from "@/lib/api";
@@ -17,11 +19,12 @@ const STATUS_META: Record<StudentTodayStatus, { label: string; color: string; or
 };
 
 /** 班级今日概览 */
-export function ClassOverviewTab({ classId }: { classId: string }) {
+export function ClassOverviewTab({ classId, onSetTargets }: { classId: string; onSetTargets?: () => void }) {
   const query = useQuery({
     queryKey: ["classes", classId, "overview"],
     queryFn: () => api.get<ClassOverview>(`/classes/${classId}/overview`),
   });
+  const targets = useClassTargets(classId);
 
   if (query.isLoading) return <Loading />;
   if (query.error || !query.data) return <ErrorBlock error={query.error} onRetry={() => query.refetch()} />;
@@ -78,6 +81,25 @@ export function ClassOverviewTab({ classId }: { classId: string }) {
       sorter: (a, b) => (a.accuracy7d.rate ?? -1) - (b.accuracy7d.rate ?? -1),
       render: (_, r) => <span title={`近 7 天首答 ${r.accuracy7d.correct}/${r.accuracy7d.total} 题`}>{percent(r.accuracy7d.rate)}</span>,
     },
+    {
+      title: "目标覆盖",
+      key: "coverage",
+      width: 100,
+      sorter: (a, b) => coverageRateOrder(a.coverage) - coverageRateOrder(b.coverage),
+      render: (_, r) =>
+        r.coverage ? (
+          <span title={`已测 ${r.coverage.tested}/${r.coverage.target} 词`}>{percent(testedRate(r.coverage))}</span>
+        ) : (
+          <span style={{ color: "var(--muted)" }}>—</span>
+        ),
+    },
+    {
+      title: "要学",
+      key: "learning",
+      width: 80,
+      sorter: (a, b) => (a.coverage?.learning ?? -1) - (b.coverage?.learning ?? -1),
+      render: (_, r) => (r.coverage ? <span className="vx-num">{r.coverage.learning}</span> : <span style={{ color: "var(--muted)" }}>—</span>),
+    },
     { title: "已学词", dataIndex: "learnedWords", width: 80, sorter: (a, b) => a.learnedWords - b.learnedWords },
     {
       title: "最近学习",
@@ -90,6 +112,21 @@ export function ClassOverviewTab({ classId }: { classId: string }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {targets.data && targets.data.items.length === 0 && (
+        <Alert
+          type="info"
+          showIcon
+          message="还没有设置目标词书"
+          description="设置后，学生的今日页会出现目标进度，这里会显示每个学生的目标覆盖和要学的词数。"
+          action={
+            onSetTargets && (
+              <Button size="small" type="primary" onClick={onSetTargets}>
+                设置目标词书
+              </Button>
+            )
+          }
+        />
+      )}
       <Row gutter={[12, 12]}>
         <Col xs={12} sm={8} md={4}>
           <StatTile label="今日完成" value={`${o.summary.doneToday}/${memberCount}`} suffix="人" tone="primary" />
@@ -119,7 +156,7 @@ export function ClassOverviewTab({ classId }: { classId: string }) {
         {o.students.length === 0 ? (
           <EmptyBlock title="班级还没有学生" description="在「成员」页把邀请码发给学生，或批量创建学生账号" />
         ) : (
-          <Table<StudentRow> rowKey="userId" size="middle" columns={columns} dataSource={o.students} pagination={false} scroll={{ x: 880 }} />
+          <Table<StudentRow> rowKey="userId" size="middle" columns={columns} dataSource={o.students} pagination={false} scroll={{ x: 1060 }} />
         )}
       </div>
 

@@ -4,24 +4,36 @@ import { useQuery, useQueryClient } from "@/lib/query";
 import { Button, Checkbox, InputNumber, Segmented, Select, Spin, Table, Tag, useApp } from "@/ui";
 import { api, errorMessage } from "@/lib/api";
 import { ErrorBlock, PageHeader } from "@/components/ui";
-import type { Book, BookDetail, Mode, Paged, SheetCandidate, SheetSource, SheetSourceSession, StudySessionData } from "@/types";
+import type { Book, BookDetail, CoverageData, Mode, Paged, SheetCandidate, SheetSource, SheetSourceSession, StudySessionData, TargetSheetStatus } from "@/types";
 import { KIND_LABEL, MODE_LABEL } from "@/types";
+import { COVERAGE_LABEL, parseTargetStatus } from "@/pages/coverage/coverage";
+import { withUser } from "@/pages/records/shared";
 import { batchSizes, printLink } from "./links";
 import { reasonLabel, REASON_COLOR } from "./reasons";
 
 interface WordHit { id: string; spelling: string; definition: string; phonetic: string | null; partOfSpeech: string | null }
 
-/** 界面上的来源切换（整本书是单元下拉里的一项，提交时转成 book 来源） */
-type SourceKind = Exclude<SheetSource["kind"], "book">;
+/**
+ * 界面上的来源切换（整本书是单元下拉里的一项，提交时转成 book 来源；
+ * 目标的两种状态各占一项，提交时转成 target 来源）
+ */
+type SourceKind = Exclude<SheetSource["kind"], "book" | "target"> | "targetUntested" | "targetLearning";
 
 const SOURCE_HINT: Record<SourceKind, string> = {
   unfamiliar: "系统按最近答错、遗忘次数、记忆稳定性和到期时间挑词。",
   session: "选最近 30 天里的一次测试或学习，用那次答错的词。",
   unit: "选一个单元或整本书，先放还不熟的词，再放没学过的词（没学过的只记成绩，不建记忆卡）。",
+  targetUntested: "目标词书里还没有正式测过的词，按书序排列，可以只出某一本书。",
+  targetLearning: "目标词书里最近一次正式测试答错、还要再学的词，可以只出某一本书。",
 };
+
+const TARGET_KIND: Record<TargetSheetStatus, SourceKind> = { untested: "targetUntested", learning: "targetLearning" };
+const KIND_TARGET: Partial<Record<SourceKind, TargetSheetStatus>> = { targetUntested: "untested", targetLearning: "learning" };
 
 /** 单元下拉里的「整本书」选项 */
 const WHOLE_BOOK = "__book__";
+/** 目标词书下拉里的「全部目标词书」选项 */
+const ALL_TARGETS = "__all__";
 
 /** 生成单词单：选来源 → 系统预选（从难到易）→ 勾掉/加词 → 份数与每份词数 → 生成并合并打印 */
 export function SheetNewPage() {
@@ -31,7 +43,10 @@ export function SheetNewPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { message } = useApp();
-  const [sourceKind, setSourceKind] = useState<SourceKind>("unfamiliar");
+  const initialTarget = parseTargetStatus(params.get("target"));
+  const [sourceKind, setSourceKind] = useState<SourceKind>(initialTarget ? TARGET_KIND[initialTarget] : "unfamiliar");
+  const [targetBookId, setTargetBookId] = useState<string>((initialTarget && params.get("bookId")) || ALL_TARGETS);
+  const targetStatus = KIND_TARGET[sourceKind];
   const [sessionId, setSessionId] = useState<string>();
   const [bookId, setBookId] = useState<string>();
   const [unitId, setUnitId] = useState<string>();
@@ -60,9 +75,28 @@ export function SheetNewPage() {
   });
   const books = useQuery({ queryKey: ["books", "all"], queryFn: () => api.get<Paged<Book>>("/books"), enabled: sourceKind === "unit" });
   const book = useQuery({ queryKey: ["books", bookId], queryFn: () => api.get<BookDetail>(`/books/${bookId}`), enabled: sourceKind === "unit" && !!bookId });
+  // 目标词书（学生自己的，或老师给出单的那个学生的）：有目标时才出现两种目标来源
+  const coverage = useQuery({
+    queryKey: ["records", userId ?? "me", "coverage"],
+    queryFn: () => api.get<CoverageData>(withUser("/records/coverage", userId)),
+    enabled: !from,
+  });
+  const targetBooks = coverage.data?.books ?? [];
+  const showTargets = targetBooks.length > 0 || !!targetStatus;
 
-  const source: SheetSource | null =
-    sourceKind === "session" ? (sessionId ? { kind: "session", sessionId } : null) : sourceKind === "unit" ? (unitId === WHOLE_BOOK && bookId ? { kind: "book", bookId } : unitId ? { kind: "unit", unitId } : null) : { kind: "unfamiliar" };
+  const source: SheetSource | null = targetStatus
+    ? { kind: "target", status: targetStatus, bookId: targetBookId === ALL_TARGETS ? undefined : targetBookId }
+    : sourceKind === "session"
+      ? sessionId
+        ? { kind: "session", sessionId }
+        : null
+      : sourceKind === "unit"
+        ? unitId === WHOLE_BOOK && bookId
+          ? { kind: "book", bookId }
+          : unitId
+            ? { kind: "unit", unitId }
+            : null
+        : { kind: "unfamiliar" };
 
   const preview = useQuery({
     queryKey: ["sheets", "preview", userId ?? "me", count, JSON.stringify(source), include.join(",")],
@@ -121,8 +155,9 @@ export function SheetNewPage() {
     }
   };
 
-  const emptyText =
-    sourceKind === "session" && !sessionId ? "先选一次测试" : sourceKind === "unit" && !bookId ? "先选一本词书" : sourceKind === "unit" && !unitId ? "再选一个单元（或整本书），就会列出要背的词" : "暂时没有需要加强的词，可以搜索手动加词";
+  const emptyText = targetStatus
+    ? `目标词书里没有${COVERAGE_LABEL[targetStatus]}的词，可以搜索手动加词`
+    : sourceKind === "session" && !sessionId ? "先选一次测试" : sourceKind === "unit" && !bookId ? "先选一本词书" : sourceKind === "unit" && !unitId ? "再选一个单元（或整本书），就会列出要背的词" : "暂时没有需要加强的词，可以搜索手动加词";
 
   return (
     <div className="vx-page">
@@ -141,8 +176,27 @@ export function SheetNewPage() {
                 { label: "不熟的词", value: "unfamiliar" },
                 { label: "某次测试的错词", value: "session" },
                 { label: "某个单元", value: "unit" },
+                ...(showTargets
+                  ? [
+                      { label: "目标：未测的词", value: "targetUntested" as SourceKind },
+                      { label: "目标：要学的词", value: "targetLearning" as SourceKind },
+                    ]
+                  : []),
               ]}
             />
+            {targetStatus && (
+              <Select
+                style={{ minWidth: 220 }}
+                aria-label="目标词书"
+                loading={coverage.isLoading}
+                value={targetBookId}
+                onChange={(v) => setTargetBookId(v)}
+                options={[
+                  { value: ALL_TARGETS, label: `全部目标词书${coverage.data ? `（${COVERAGE_LABEL[targetStatus]} ${coverage.data.total[targetStatus]}）` : ""}` },
+                  ...targetBooks.map((b) => ({ value: b.bookId, label: `${b.name}（${COVERAGE_LABEL[targetStatus]} ${b[targetStatus]}）` })),
+                ]}
+              />
+            )}
             {sourceKind === "session" && (
               <Select
                 style={{ minWidth: 320, flex: 1 }}

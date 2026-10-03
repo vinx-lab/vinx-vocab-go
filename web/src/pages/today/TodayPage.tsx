@@ -8,7 +8,9 @@ import { api, errorMessage } from "@/lib/api";
 import { can } from "@/lib/perms";
 import { EmptyBlock, ErrorBlock, Loading, PageHeader, StatTile } from "@/components/ui";
 import { ProgressRing } from "@/components/charts";
-import type { SessionKind, TodayData, TodayPlanCard } from "@/types";
+import type { CoverageData, SessionKind, TodayData, TodayPlanCard } from "@/types";
+import { coverageLine } from "@/pages/coverage/components";
+import { targetSheetLink } from "@/pages/coverage/coverage";
 import { preloadStudyPage } from "@/pages/study/lazy";
 import { MODE_LABEL } from "@/types";
 
@@ -113,6 +115,8 @@ export function TodayPage() {
         </Col>
       </Row>
 
+      <TargetProgressCard />
+
       {t.plans.length === 0 ? (
         <EmptyBlock
           title="今天没有学习任务"
@@ -179,6 +183,44 @@ export function TodayPage() {
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** 目标进度（spec 0003）：已测 / 应测的进度环，会了 · 要学 · 未测，一键出单词单；没有目标时不显示 */
+function TargetProgressCard() {
+  const q = useQuery({ queryKey: ["records", "me", "coverage"], queryFn: () => api.get<CoverageData>("/records/coverage"), refetchOnWindowFocus: true });
+  const c = q.data;
+  if (!c || c.books.length === 0) return null;
+  const { total } = c;
+  return (
+    <div className="vx-card vx-rise" style={{ padding: 18, marginBottom: 14 }} aria-label="目标进度">
+      <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+        <ProgressRing value={total.tested} total={total.target} label={`已测 ${total.tested}/${total.target}`} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+            <Link to="/records" className="vx-title" style={{ fontSize: 18 }}>
+              目标进度
+            </Link>
+            <span style={{ color: "var(--ink-soft)", fontSize: 14 }}>
+              已测 <b className="vx-num">{total.tested}</b> / {total.target}
+            </span>
+          </div>
+          <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>{coverageLine(total)}</div>
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginTop: 14 }}>
+        <Link to={targetSheetLink("untested")} style={total.untested === 0 ? { pointerEvents: "none" } : undefined}>
+          <Button block type="primary" disabled={total.untested === 0}>
+            测未测的词
+          </Button>
+        </Link>
+        <Link to={targetSheetLink("learning")} style={total.learning === 0 ? { pointerEvents: "none" } : undefined}>
+          <Button block disabled={total.learning === 0}>
+            练要学的词
+          </Button>
+        </Link>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
-import { Button, Card, Col, Form, Input, List, Popconfirm, Radio, Row, useApp, BgColorsOutlined, TeamOutlined } from "@/ui";
+import { Button, Card, Col, Form, Input, List, Popconfirm, Radio, Row, useApp, BgColorsOutlined, BookOutlined, TeamOutlined } from "@/ui";
+import { TargetBooksEditor } from "@/pages/coverage/components";
 import { ROLE_LABEL, THEME_PREFS, type ThemePref } from "@vinx/shared";
 import { api, errorMessage } from "@/lib/api";
 import { check, useIdentity } from "@/lib/auth";
@@ -7,9 +8,52 @@ import { useThemePref } from "@/components/ThemeProvider";
 import { can } from "@/lib/perms";
 import { useApi, useMutation, invalidate } from "@/lib/query";
 import { PageHeader } from "@/components/ui";
-import type { MyClass, Paged } from "@/types";
+import type { MyClass, MyTargetBooks, Paged } from "@/types";
 
-/** 个人中心：资料、外观、密码、我的班级（邀请码加入） */
+/**
+ * 我的目标词书（spec 0003）：有班级时用班级的目标，只读；没有班级时自己设置。
+ * 有班级时自己设的不生效（保留，退出所有班级后恢复）。
+ */
+function MyTargetBooksCard() {
+  const { message } = useApp();
+  const q = useApi(["me", "target-books"], () => api.get<MyTargetBooks>("/me/target-books"));
+  const save = useMutation({
+    mutationFn: (bookIds: string[]) => api.put<MyTargetBooks>("/me/target-books", { bookIds }),
+    onSuccess: () => {
+      message.success("目标词书已保存");
+      void invalidate(["me", "target-books"]);
+      void invalidate(["records"]);
+    },
+    onError: (e) => message.error(errorMessage(e, "保存失败")),
+  });
+  const t = q.data;
+  const fromClass = t?.source === "class";
+
+  return (
+    <Card
+      title={
+        <>
+          <BookOutlined /> 目标词书
+        </>
+      }
+    >
+      {q.isLoading || !t ? (
+        <div style={{ color: "var(--muted)" }}>{q.error ? errorMessage(q.error, "加载失败") : "加载中…"}</div>
+      ) : (
+        <>
+          <div style={{ marginBottom: 12, color: "var(--muted)", fontSize: 13 }}>
+            {fromClass
+              ? `由班级 ${t.classes.map((c) => c.name).join("、")} 设置。`
+              : "这一阶段要求自己覆盖的词书。今日页的目标进度和学习记录按这些词书统计。"}
+          </div>
+          <TargetBooksEditor value={t.books} readOnly={fromClass} saving={save.isPending} onSave={(ids) => save.mutate(ids)} />
+        </>
+      )}
+    </Card>
+  );
+}
+
+/** 个人中心：资料、外观、密码、我的班级（邀请码加入）、目标词书 */
 export function ProfilePage() {
   const { data: identity, refetch } = useIdentity();
   const { message } = useApp();
@@ -34,8 +78,9 @@ export function ProfilePage() {
     onSuccess: (cls) => {
       message.success(`已加入「${cls.name}」`);
       joinForm.resetFields();
-      void invalidate(["me", "classes"]);
+      void invalidate(["me"]);
       void invalidate(["today"]);
+      void invalidate(["records"]);
     },
     onError: (e) => message.error(errorMessage(e)),
   });
@@ -44,8 +89,9 @@ export function ProfilePage() {
     mutationFn: (id: string) => api.del(`/me/classes/${id}`),
     onSuccess: () => {
       message.success("已退出班级");
-      void invalidate(["me", "classes"]);
+      void invalidate(["me"]);
       void invalidate(["today"]);
+      void invalidate(["records"]);
     },
     onError: (e) => message.error(errorMessage(e)),
   });
@@ -114,6 +160,11 @@ export function ProfilePage() {
                 )}
               />
             </Card>
+          </Col>
+        )}
+        {isLearner && (
+          <Col xs={24} lg={12}>
+            <MyTargetBooksCard />
           </Col>
         )}
         <Col xs={24} lg={12}>
