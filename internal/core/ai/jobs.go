@@ -16,6 +16,8 @@ const (
 	JobKindPassage  JobKind = "passage"
 	JobKindExamples JobKind = "examples"
 	JobKindExample  JobKind = "example"
+	JobKindPatterns JobKind = "patterns" // spec 0005：句型草稿
+	JobKindVariants JobKind = "variants" // spec 0005：仿写草稿
 )
 
 // JobStatus 任务状态。

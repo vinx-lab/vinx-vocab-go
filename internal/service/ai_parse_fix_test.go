@@ -52,7 +52,7 @@ func TestGeneratePassageToleratesWrongTypedFields(t *testing.T) {
 	reply := `{"title":123,"passage":"apple banana cherry are fruit.","questions":"none"}`
 	srv := fakeChatServer(t, reply)
 
-	result, err := GeneratePassage(ctx, cache, db, callConfigFor(srv.URL), []string{"w1", "w2", "w3"}, nil, "")
+	result, err := GeneratePassage(ctx, cache, db, callConfigFor(srv.URL), []string{"w1", "w2", "w3"}, nil, "", "")
 	if err != nil {
 		t.Fatalf("expected success (oracle tolerates wrong-typed title/questions), got error: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestGenerateExamplesOneBadSpellingDoesNotDropGoodItem(t *testing.T) {
 	reply := `[{"spelling":"alpha","example":"I love alpha testing today.","exampleCn":"我喜欢阿尔法测试。"},{"spelling":2,"example":"This has beta in it now.","exampleCn":"这里面现在有贝塔。"}]`
 	srv := fakeChatServer(t, reply)
 
-	result, err := GenerateExamples(ctx, cache, db, time.Now(), callConfigFor(srv.URL), []string{"w1", "w2"}, nil)
+	result, err := GenerateExamples(ctx, cache, db, time.Now(), callConfigFor(srv.URL), []string{"w1", "w2"}, nil, GenOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

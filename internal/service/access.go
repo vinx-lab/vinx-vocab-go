@@ -195,6 +195,55 @@ func AssertCanEditBook(ctx context.Context, q store.Querier, a *Actor, bookID st
 	return &b, nil
 }
 
+// AssertSentencesVisible 仿写选用的已有句子（spec 0005 §6）都存在且操作者看得到：在可见词书的单元篇里，
+// 或是可见词书里的词的例句，或在自己的短文里。否则 404「句子不存在」。ids 需已去重。
+func AssertSentencesVisible(ctx context.Context, q store.Querier, a *Actor, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	where, args, err := VisibleBookFilter(ctx, q, a, "bk")
+	if err != nil {
+		return err
+	}
+	query := `SELECT count(*) FROM "Sentence" s WHERE s."id" IN (` + store.Placeholders(len(ids)) + `) AND (
+		EXISTS (SELECT 1 FROM "UnitTextSentence" uts JOIN "UnitText" ut ON ut."id" = uts."textId" JOIN "Unit" u ON u."id" = ut."unitId"
+			JOIN "Book" bk ON bk."id" = u."bookId" WHERE uts."sentenceId" = s."id" AND ` + where + `)
+		OR (s."source" = 'example' AND EXISTS (SELECT 1 FROM "UnitWord" uw JOIN "Unit" u ON u."id" = uw."unitId"
+			JOIN "Book" bk ON bk."id" = u."bookId" WHERE uw."wordId" = s."wordId" AND ` + where + `))
+		OR EXISTS (SELECT 1 FROM "PassageSentence" ps JOIN "Passage" p ON p."id" = ps."passageId" WHERE ps."sentenceId" = s."id" AND p."userId" = ?))`
+	qargs := store.Args(ids)
+	qargs = append(qargs, args...)
+	qargs = append(qargs, args...)
+	qargs = append(qargs, a.ID)
+	var n int
+	if err := q.QueryRowContext(ctx, query, qargs...).Scan(&n); err != nil {
+		return err
+	}
+	if n != len(ids) {
+		return httpx.NotFound("句子不存在")
+	}
+	return nil
+}
+
+// TeacherTargetBookIDs 仿写「替换用的词汇：目标词」的范围（spec 0005 §6）：操作者自己带的班级（班主任是自己）
+// 的班级目标词书，加上自己设的个人目标；按班级、顺序去重。个人版没有班级，只看个人目标。
+func TeacherTargetBookIDs(ctx context.Context, q store.Querier, a *Actor) ([]string, error) {
+	var ids []string
+	if !IsPersonal(a) {
+		cls, err := queryStrings(ctx, q, `SELECT t."bookId" FROM "ClassTargetBook" t JOIN "Classroom" c ON c."id" = t."classId"
+			WHERE c."teacherId" = ? ORDER BY c."createdAt", c."id", t."sortOrder"`, a.ID)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, cls...)
+	}
+	own, err := queryStrings(ctx, q, `SELECT "bookId" FROM "UserTargetBook" WHERE "userId" = ? ORDER BY "sortOrder"`, a.ID)
+	if err != nil {
+		return nil, err
+	}
+	return dedupe(append(ids, own...)), nil
+}
+
 // MemberClassIDs 某用户作为成员所在的班级 id（旧 school/classes.service.ts:memberClassIds；
 // A6 实现完整班级服务前，学习计划等模块的最小依赖）。
 func MemberClassIDs(ctx context.Context, q store.Querier, userID string) ([]string, error) {

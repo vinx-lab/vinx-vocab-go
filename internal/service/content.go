@@ -340,13 +340,14 @@ type BookRow struct {
 	SortOrder   int        `json:"sortOrder"`
 	CreatedAt   store.Time `json:"createdAt"`
 	UpdatedAt   store.Time `json:"updatedAt"`
+	Level       *string    `json:"level"` // spec 0005：学段 primary | junior | exam，可空
 }
 
-const bookColumns = `"id","name","description","isSystem","ownerId","sortOrder","createdAt","updatedAt"`
+const bookColumns = `"id","name","description","isSystem","ownerId","sortOrder","createdAt","updatedAt","level"`
 
 func scanBook(row interface{ Scan(...any) error }) (*BookRow, error) {
 	var b BookRow
-	if err := row.Scan(&b.ID, &b.Name, &b.Description, &b.IsSystem, &b.OwnerID, &b.SortOrder, &b.CreatedAt, &b.UpdatedAt); err != nil {
+	if err := row.Scan(&b.ID, &b.Name, &b.Description, &b.IsSystem, &b.OwnerID, &b.SortOrder, &b.CreatedAt, &b.UpdatedAt, &b.Level); err != nil {
 		return nil, err
 	}
 	return &b, nil
@@ -394,6 +395,7 @@ type BookPatch struct {
 	Name        *string
 	Description *sql.NullString
 	IsSystem    *bool
+	Level       *sql.NullString // spec 0005：nil 不改；Valid=false 清空
 }
 
 // UpdateBook 更新词书。与 Prisma 的 `update({ data: {} })` 一致：没有任何字段要改时不执行 UPDATE，
@@ -416,6 +418,14 @@ func UpdateBook(ctx context.Context, q store.Querier, now time.Time, id string, 
 	if p.IsSystem != nil {
 		sets = append(sets, `"isSystem" = ?`)
 		args = append(args, *p.IsSystem)
+	}
+	if p.Level != nil {
+		sets = append(sets, `"level" = ?`)
+		if p.Level.Valid {
+			args = append(args, p.Level.String)
+		} else {
+			args = append(args, nil)
+		}
 	}
 	if len(sets) == 0 {
 		return nil
@@ -475,6 +485,7 @@ type BookListItem struct {
 	WordCount   int        `json:"wordCount"`
 	CanEdit     bool       `json:"canEdit"`
 	CreatedAt   store.Time `json:"createdAt"`
+	Level       *string    `json:"level"` // spec 0005
 }
 
 // ListBooks 当前操作者可见的词书列表（含单元数、词数），排序：系统词书优先 → sortOrder → 创建时间。
@@ -483,7 +494,7 @@ func ListBooks(ctx context.Context, q store.Querier, a *Actor) ([]BookListItem, 
 	if err != nil {
 		return nil, err
 	}
-	query := `SELECT b."id", b."name", b."description", b."isSystem", b."ownerId", u."name", b."createdAt",
+	query := `SELECT b."id", b."name", b."description", b."isSystem", b."ownerId", u."name", b."createdAt", b."level",
 		(SELECT count(*) FROM "Unit" un WHERE un."bookId" = b."id") AS unitCount,
 		(SELECT count(*) FROM "UnitWord" uw JOIN "Unit" un2 ON un2."id" = uw."unitId" WHERE un2."bookId" = b."id") AS wordCount
 		FROM "Book" b LEFT JOIN "User" u ON u."id" = b."ownerId"
@@ -497,7 +508,7 @@ func ListBooks(ctx context.Context, q store.Querier, a *Actor) ([]BookListItem, 
 	for rows.Next() {
 		var it BookListItem
 		var ownerID *string
-		if err := rows.Scan(&it.ID, &it.Name, &it.Description, &it.IsSystem, &ownerID, &it.OwnerName, &it.CreatedAt, &it.UnitCount, &it.WordCount); err != nil {
+		if err := rows.Scan(&it.ID, &it.Name, &it.Description, &it.IsSystem, &ownerID, &it.OwnerName, &it.CreatedAt, &it.Level, &it.UnitCount, &it.WordCount); err != nil {
 			return nil, err
 		}
 		it.CanEdit = CanEditBook(a, it.IsSystem, ownerID)
@@ -523,6 +534,7 @@ type BookDetail struct {
 	OwnerName   *string        `json:"ownerName"`
 	CanEdit     bool           `json:"canEdit"`
 	Units       []BookUnitItem `json:"units"`
+	Level       *string        `json:"level"` // spec 0005
 }
 
 // GetBookDetail 可见词书的详情；不可见 / 不存在返回 (nil, nil)（路由统一转 404「词书不存在」）。
@@ -531,12 +543,12 @@ func GetBookDetail(ctx context.Context, q store.Querier, a *Actor, id string) (*
 	if err != nil {
 		return nil, err
 	}
-	row := q.QueryRowContext(ctx, `SELECT b."id", b."name", b."description", b."isSystem", b."ownerId", u."name"
+	row := q.QueryRowContext(ctx, `SELECT b."id", b."name", b."description", b."isSystem", b."ownerId", u."name", b."level"
 		FROM "Book" b LEFT JOIN "User" u ON u."id" = b."ownerId"
 		WHERE b."id" = ? AND `+where, append([]any{id}, args...)...)
 	var d BookDetail
 	var ownerID *string
-	if err := row.Scan(&d.ID, &d.Name, &d.Description, &d.IsSystem, &ownerID, &d.OwnerName); err != nil {
+	if err := row.Scan(&d.ID, &d.Name, &d.Description, &d.IsSystem, &ownerID, &d.OwnerName, &d.Level); err != nil {
 		if store.IsNoRows(err) {
 			return nil, nil
 		}

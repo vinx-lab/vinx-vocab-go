@@ -24,6 +24,7 @@ var modules = []func(r *Router, d *Deps){
 	registerPlans,
 	registerStudy,
 	registerAI,
+	registerAIGen,
 	registerSettings,
 	registerEdition,
 	registerClasses,

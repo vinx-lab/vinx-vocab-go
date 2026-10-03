@@ -77,9 +77,10 @@ func builtinIrregular() lemma.Irregular {
 
 // LexWord 词库里的一条（分析结果里展示用）。
 type LexWord struct {
-	ID         string
-	Spelling   string
-	Definition string
+	ID           string
+	Spelling     string
+	Definition   string
+	PartOfSpeech string // 空串表示没有（spec 0005 结构相似度区分实词 / 虚词用）
 }
 
 // Lexicon 全部词库 + 匹配器。匹配范围是全部 Word（spec 0004 §5）。
@@ -90,7 +91,7 @@ type Lexicon struct {
 
 // LoadLexicon 读全部词库建匹配器；extra 为尚未入库的词（导入预览用，ID 自定，不与库里的冲突）。
 func LoadLexicon(ctx context.Context, q store.Querier, extra ...LexWord) (*Lexicon, error) {
-	rows, err := q.QueryContext(ctx, `SELECT "id","spelling","definition" FROM "Word"`)
+	rows, err := q.QueryContext(ctx, `SELECT "id","spelling","definition",coalesce("partOfSpeech",'') FROM "Word"`)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +100,7 @@ func LoadLexicon(ctx context.Context, q store.Querier, extra ...LexWord) (*Lexic
 	var entries []lemma.Entry
 	for rows.Next() {
 		var w LexWord
-		if err := rows.Scan(&w.ID, &w.Spelling, &w.Definition); err != nil {
+		if err := rows.Scan(&w.ID, &w.Spelling, &w.Definition, &w.PartOfSpeech); err != nil {
 			return nil, err
 		}
 		lx.Words[w.ID] = w
@@ -158,13 +159,15 @@ type newSentence struct {
 	WordID      *string
 	Model       *string
 	CreatedByID *string
+	OriginID    *string // 仿写的原句（spec 0005）
+	VariantNote *string
 }
 
 func insertSentence(ctx context.Context, q store.Querier, lx *Lexicon, now time.Time, s newSentence) (string, error) {
 	id := store.NewID()
 	ts := store.NewTime(now)
-	if _, err := q.ExecContext(ctx, `INSERT INTO "Sentence" ("id","en","cn","frame","source","wordId","model","createdById","createdAt","updatedAt") VALUES (?,?,?,?,?,?,?,?,?,?)`,
-		id, s.En, s.Cn, s.Frame, s.Source, s.WordID, s.Model, s.CreatedByID, ts, ts); err != nil {
+	if _, err := q.ExecContext(ctx, `INSERT INTO "Sentence" ("id","en","cn","frame","source","wordId","model","createdById","originId","variantNote","createdAt","updatedAt") VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, s.En, s.Cn, s.Frame, s.Source, s.WordID, s.Model, s.CreatedByID, s.OriginID, s.VariantNote, ts, ts); err != nil {
 		return "", err
 	}
 	return id, linkSentence(ctx, q, lx, id, s.En)
@@ -463,7 +466,8 @@ func fillWordsSlice(ctx context.Context, q store.Querier, vs []SentenceView) err
 	return fillWords(ctx, q, ptrs)
 }
 
-// SavePassageSentences 新生成的短文按句拆分保存（0005 让 AI 直接按句输出之前的过渡做法）。
+// SavePassageSentences 新生成的短文按句拆分保存：AI 仍按旧的整段格式输出时用（spec 0005 起 AI 按句输出，
+// 直接保存那些句子，见 SavePassage）。
 func SavePassageSentences(ctx context.Context, q store.Querier, now time.Time, passageID string) error {
 	var userID, body string
 	var model, bodyCn *string

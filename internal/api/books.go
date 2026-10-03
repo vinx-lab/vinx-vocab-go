@@ -7,6 +7,7 @@ import (
 
 	"github.com/vinx-lab/vinx-vocab-go/internal/auth"
 	"github.com/vinx-lab/vinx-vocab-go/internal/core"
+	coreai "github.com/vinx-lab/vinx-vocab-go/internal/core/ai"
 	"github.com/vinx-lab/vinx-vocab-go/internal/core/vocabparser"
 	"github.com/vinx-lab/vinx-vocab-go/internal/httpx"
 	"github.com/vinx-lab/vinx-vocab-go/internal/service"
@@ -40,10 +41,12 @@ type bookPatchBody struct {
 	Name        httpx.Opt[string] `json:"name"`
 	Description httpx.Opt[string] `json:"description"`
 	IsSystem    httpx.Opt[bool]   `json:"isSystem"`
+	Level       httpx.Opt[string] `json:"level"` // spec 0005：primary | junior | exam | null
 
 	name        *string
 	description httpx.Opt[string]
 	isSystem    *bool
+	level       *sql.NullString
 }
 
 func (b *bookPatchBody) Validate(v *httpx.V) {
@@ -52,6 +55,13 @@ func (b *bookPatchBody) Validate(v *httpx.V) {
 	if b.IsSystem.Set {
 		val := v.OptBool("isSystem", b.IsSystem, false)
 		b.isSystem = &val
+	}
+	if b.Level.Set {
+		if b.Level.Null {
+			b.level = &sql.NullString{}
+		} else if lv := v.Enum("level", b.Level, coreai.Levels, ""); lv != "" {
+			b.level = &sql.NullString{String: lv, Valid: true}
+		}
 	}
 }
 
@@ -387,7 +397,7 @@ func registerBooks(r *Router, d *Deps) {
 		if err != nil {
 			return err
 		}
-		patch := service.BookPatch{Name: body.name}
+		patch := service.BookPatch{Name: body.name, Level: body.level}
 		if body.description.Set {
 			if body.description.Null {
 				patch.Description = &sql.NullString{Valid: false}

@@ -74,38 +74,52 @@ func (b aiSettingsBody) toInput() coreai.SettingsInput {
 	}
 }
 
+// aiPromptsBody PUT /settings/ai/prompts：四项（spec 0005 从 example / passage 扩展到加上 pattern / variant），只更新提交了的。
 type aiPromptsBody struct {
 	Example httpx.Opt[string] `json:"example"`
 	Passage httpx.Opt[string] `json:"passage"`
+	Pattern httpx.Opt[string] `json:"pattern"`
+	Variant httpx.Opt[string] `json:"variant"`
+}
+
+func (b *aiPromptsBody) fields() []struct {
+	key coreai.PromptKey
+	o   httpx.Opt[string]
+} {
+	return []struct {
+		key coreai.PromptKey
+		o   httpx.Opt[string]
+	}{{coreai.PromptExample, b.Example}, {coreai.PromptPassage, b.Passage}, {coreai.PromptPattern, b.Pattern}, {coreai.PromptVariant, b.Variant}}
 }
 
 func (b *aiPromptsBody) Validate(v *httpx.V) {
-	if !b.Example.Set && !b.Passage.Set {
+	submitted := false
+	for _, f := range b.fields() {
+		submitted = submitted || f.o.Set
+	}
+	if !submitted {
 		v.Add("body", "至少提交一项提示词")
 		return
 	}
 	// 长度上限和非空检查在 internal/core/ai（去掉首尾空白后判断）；这里只挡明显过大的请求体。
-	if b.Example.Set && b.Example.Null {
-		v.Add("example", "Expected string, received null")
+	for _, f := range b.fields() {
+		if f.o.Set && f.o.Null {
+			v.Add(f.key, "Expected string, received null")
+		}
 	}
-	if b.Passage.Set && b.Passage.Null {
-		v.Add("passage", "Expected string, received null")
-	}
-	if b.Example.Set && !b.Example.Null {
-		v.OptStr("example", b.Example, httpx.Max(20_000))
-	}
-	if b.Passage.Set && !b.Passage.Null {
-		v.OptStr("passage", b.Passage, httpx.Max(20_000))
+	for _, f := range b.fields() {
+		if f.o.Set && !f.o.Null {
+			v.OptStr(f.key, f.o, httpx.Max(20_000))
+		}
 	}
 }
 
 func (b aiPromptsBody) toInput() coreai.StoredPromptTemplates {
 	out := coreai.StoredPromptTemplates{}
-	if b.Example.Set && !b.Example.Null {
-		out[coreai.PromptExample] = b.Example.Val
-	}
-	if b.Passage.Set && !b.Passage.Null {
-		out[coreai.PromptPassage] = b.Passage.Val
+	for _, f := range b.fields() {
+		if f.o.Set && !f.o.Null {
+			out[f.key] = f.o.Val
+		}
 	}
 	return out
 }
@@ -190,7 +204,7 @@ func registerSettings(r *Router, d *Deps) {
 		actor := auth.ActorFrom(ctx)
 		key := req.PathValue("key")
 		vv := &httpx.V{}
-		vv.Enum("key", httpx.Some(key), []string{coreai.PromptExample, coreai.PromptPassage}, "")
+		vv.Enum("key", httpx.Some(key), coreai.PromptKeys, "")
 		if err := vv.Err(); err != nil {
 			return err
 		}

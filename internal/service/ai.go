@@ -270,6 +270,7 @@ type AiPreviewWord struct {
 type AiPreview struct {
 	Words  []AiPreviewWord `json:"words"`
 	Prompt string          `json:"prompt"`
+	Level  coreai.Level    `json:"level"` // spec 0005：这次生成用的学段
 }
 
 func previewWordsOf(rows []wordRow) []AiPreviewWord {
@@ -300,6 +301,8 @@ type ExampleResultItem struct {
 	Example    string `json:"example"`
 	ExampleCn  string `json:"exampleCn"`
 	ClozeReady bool   `json:"clozeReady"`
+	// Checks spec 0005：生成后的检查（超纲、太长；目标词没用上的不写库，记在 failed 里）
+	Checks coreai.SentenceChecks `json:"checks"`
 }
 
 // AiExamplesJobResult 例句任务的结果。
@@ -307,10 +310,24 @@ type AiExamplesJobResult struct {
 	Items     []ExampleResultItem `json:"items"`
 	Failed    []string            `json:"failed"`
 	Remaining *int                `json:"remaining,omitempty"`
+	Level     coreai.Level        `json:"level,omitempty"` // spec 0005
 }
 
-// PreviewExamples 例句预览：单词 + 默认可见提示词（要求模板 + 单词列表），不调用 AI。
-func PreviewExamples(ctx context.Context, cache *AIConfigCache, q store.Querier, wordIDs []string) (AiPreview, error) {
+// GenOptions spec 0005：生成用的学段，以及检查超纲用的已知词集合（nil 表示不检查超纲）。
+type GenOptions struct {
+	Level coreai.Level
+	Known map[string]bool
+}
+
+func (o GenOptions) level() coreai.Level {
+	if coreai.IsLevel(o.Level) {
+		return o.Level
+	}
+	return coreai.DefaultLevel
+}
+
+// PreviewExamples 例句预览：单词 + 默认可见提示词（要求模板按学段替换占位符 + 单词列表），不调用 AI。
+func PreviewExamples(ctx context.Context, cache *AIConfigCache, q store.Querier, wordIDs []string, level coreai.Level) (AiPreview, error) {
 	rows, err := loadWords(ctx, q, wordIDs, ExampleBatchLimit)
 	if err != nil {
 		return AiPreview{}, err
@@ -319,7 +336,8 @@ func PreviewExamples(ctx context.Context, cache *AIConfigCache, q store.Querier,
 	if err != nil {
 		return AiPreview{}, err
 	}
-	return AiPreview{Words: previewWordsOf(rows), Prompt: coreai.BuildExamplePrompt(tpl, promptWordsOf(rows))}, nil
+	level = GenOptions{Level: level}.level()
+	return AiPreview{Words: previewWordsOf(rows), Prompt: coreai.BuildExamplePrompt(coreai.FillPlaceholders(tpl, level), promptWordsOf(rows)), Level: level}, nil
 }
 
 // clozeReady 是否能挖空（对应旧 lib/questions.ts buildCloze != null，仅取「是否命中」，不产出挖空文本）。
@@ -343,13 +361,15 @@ var parenRe2 = regexp.MustCompile(`[（(][^)）]*[)）]`)
 
 // GenerateExamples 为若干单词生成例句并写回 Word（标记来源 ai）。prompt 是页面上的可见提示词
 // （用户消息），不传时按默认模板拼；单词以 wordIds 为准。
-func GenerateExamples(ctx context.Context, cache *AIConfigCache, q store.Querier, now time.Time, cfg coreai.CallConfig, wordIDs []string, prompt *string) (AiExamplesJobResult, error) {
+// opts 给出学段（替换模板占位符、单句上限）与已知词（超纲检查）；每个写入的例句附上检查结果（spec 0005 §4）。
+func GenerateExamples(ctx context.Context, cache *AIConfigCache, q store.Querier, now time.Time, cfg coreai.CallConfig, wordIDs []string, prompt *string, opts GenOptions) (AiExamplesJobResult, error) {
+	level := opts.level()
 	rows, err := loadWords(ctx, q, wordIDs, ExampleBatchLimit)
 	if err != nil {
 		return AiExamplesJobResult{}, err
 	}
 	if len(rows) == 0 {
-		return AiExamplesJobResult{Items: []ExampleResultItem{}, Failed: []string{}}, nil
+		return AiExamplesJobResult{Items: []ExampleResultItem{}, Failed: []string{}, Level: level}, nil
 	}
 
 	visible := ""
@@ -360,41 +380,39 @@ func GenerateExamples(ctx context.Context, cache *AIConfigCache, q store.Querier
 		if err != nil {
 			return AiExamplesJobResult{}, err
 		}
-		visible = coreai.BuildExamplePrompt(tpl, promptWordsOf(rows))
+		visible = coreai.BuildExamplePrompt(coreai.FillPlaceholders(tpl, level), promptWordsOf(rows))
 	}
 
 	reply, err := askFor(ctx, cfg, coreai.PromptExample, visible, 3000)
 	if err != nil {
 		return AiExamplesJobResult{}, err
 	}
-	// 解析到 []any（未做字段类型校验，与旧版 parseAiList 的运行时语义一致，见 I1）：一项字段类型不对
-	// 或整项不是对象都不会连累数组里其他合格的项。
-	list, err := coreai.ParseAiList(reply)
+	// 解析（未做字段类型校验，与旧版 parseAiList 的运行时语义一致，见 I1）：一项字段类型不对
+	// 或整项不是对象都不会连累数组里其他合格的项。字段为 en / cn，兼容旧字段名 example / exampleCn。
+	list, err := coreai.ParseExampleItems(reply)
 	if err != nil {
 		return AiExamplesJobResult{}, err
 	}
 	// bySpelling 的 key 用 String(p.spelling ?? "").trim().toLowerCase()（AsString 已处理数字/布尔转字符串）。
-	bySpelling := map[string]map[string]any{}
+	bySpelling := map[string]coreai.ExampleItem{}
 	for _, it := range list {
-		m := coreai.AsMap(it)
-		key := strings.ToLower(strings.TrimSpace(coreai.AsString(m["spelling"])))
-		if key != "" {
-			bySpelling[key] = m
+		if key := strings.ToLower(it.Spelling); key != "" {
+			bySpelling[key] = it
 		}
 	}
 
 	items := []ExampleResultItem{}
 	failed := []string{}
 	var exampleLex *Lexicon
+	var checker *SentenceChecker
 	for i, w := range rows {
 		hit, ok := bySpelling[strings.ToLower(w.Spelling)]
 		if !ok && len(list) == len(rows) {
-			hit, ok = coreai.AsMap(list[i]), true
+			hit, ok = list[i], true
 		}
 		example, exampleCn := "", ""
 		if ok {
-			example = strings.TrimSpace(coreai.AsString(hit["example"]))
-			exampleCn = strings.TrimSpace(coreai.AsString(hit["exampleCn"]))
+			example, exampleCn = hit.En, hit.Cn
 		}
 		if example == "" || exampleCn == "" || !coreai.ExampleUsesWord(example, w.Spelling) {
 			failed = append(failed, w.Spelling)
@@ -409,13 +427,15 @@ func GenerateExamples(ctx context.Context, cache *AIConfigCache, q store.Querier
 			if exampleLex, err = LoadLexicon(ctx, q); err != nil {
 				return AiExamplesJobResult{}, err
 			}
+			checker = NewSentenceChecker(exampleLex, opts.Known, level)
 		}
 		if err := SyncExampleSentence(ctx, q, exampleLex, now, w.ID); err != nil {
 			return AiExamplesJobResult{}, err
 		}
-		items = append(items, ExampleResultItem{WordID: w.ID, Spelling: w.Spelling, Example: example, ExampleCn: exampleCn, ClozeReady: clozeReady(example, w.Spelling)})
+		items = append(items, ExampleResultItem{WordID: w.ID, Spelling: w.Spelling, Example: example, ExampleCn: exampleCn, ClozeReady: clozeReady(example, w.Spelling),
+			Checks: checker.Check(example, []TargetWord{{ID: w.ID, Spelling: w.Spelling}}, "")})
 	}
-	return AiExamplesJobResult{Items: items, Failed: failed}, nil
+	return AiExamplesJobResult{Items: items, Failed: failed, Level: level}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -448,10 +468,14 @@ type PassageResult struct {
 	Questions    []PassageQuestion
 	Words        []PassageWordStat
 	MissingWords []string
+	// spec 0005：AI 按句输出的句子（Legacy 为真时 AI 仍按旧格式整段输出，保存时按句拆分）
+	Sentences []coreai.PassageSentenceItem
+	Legacy    bool
+	Level     coreai.Level
 }
 
-// PreviewPassage 短文预览：单词 + 默认可见提示词（要求模板 + 目标单词 + 主题），不调用 AI。
-func PreviewPassage(ctx context.Context, cache *AIConfigCache, q store.Querier, wordIDs []string, topic string) (AiPreview, error) {
+// PreviewPassage 短文预览：单词 + 默认可见提示词（要求模板按学段替换占位符 + 目标单词 + 主题），不调用 AI。
+func PreviewPassage(ctx context.Context, cache *AIConfigCache, q store.Querier, wordIDs []string, topic string, level coreai.Level) (AiPreview, error) {
 	rows, err := loadWords(ctx, q, wordIDs, PassageWordLimit)
 	if err != nil {
 		return AiPreview{}, err
@@ -460,12 +484,14 @@ func PreviewPassage(ctx context.Context, cache *AIConfigCache, q store.Querier, 
 	if err != nil {
 		return AiPreview{}, err
 	}
-	return AiPreview{Words: previewWordsOf(rows), Prompt: coreai.BuildPassagePrompt(tpl, promptWordsOf(rows), topic)}, nil
+	level = GenOptions{Level: level}.level()
+	return AiPreview{Words: previewWordsOf(rows), Prompt: coreai.BuildPassagePrompt(coreai.FillPlaceholders(tpl, level), promptWordsOf(rows), topic), Level: level}, nil
 }
 
 // GeneratePassage 用指定单词生成巩固短文（结果由调用方保存）。prompt 是页面上的可见提示词
 // （用户消息），不传时按默认模板拼；「出现了哪些目标词」按 wordIds 统计。
-func GeneratePassage(ctx context.Context, cache *AIConfigCache, q store.Querier, cfg coreai.CallConfig, wordIDs []string, prompt *string, topic string) (PassageResult, error) {
+func GeneratePassage(ctx context.Context, cache *AIConfigCache, q store.Querier, cfg coreai.CallConfig, wordIDs []string, prompt *string, topic string, level coreai.Level) (PassageResult, error) {
+	level = GenOptions{Level: level}.level()
 	rows, err := loadWords(ctx, q, wordIDs, PassageWordLimit)
 	if err != nil {
 		return PassageResult{}, err
@@ -482,23 +508,20 @@ func GeneratePassage(ctx context.Context, cache *AIConfigCache, q store.Querier,
 		if err != nil {
 			return PassageResult{}, err
 		}
-		visible = coreai.BuildPassagePrompt(tpl, promptWordsOf(rows), topic)
+		visible = coreai.BuildPassagePrompt(coreai.FillPlaceholders(tpl, level), promptWordsOf(rows), topic)
 	}
 
 	reply, err := askFor(ctx, cfg, coreai.PromptPassage, visible, 2500)
 	if err != nil {
 		return PassageResult{}, err
 	}
-	// 解析到 map（不校验字段类型，见 I1）：title 是数字、questions 不是数组等都按旧版的
-	// String(x ?? "") / Array.isArray(...) 语义宽松处理，不整段报错。
-	raw, err := coreai.ParseAiObject(reply)
+	// 解析（不校验字段类型，见 I1）：title 是数字、questions 不是数组等都按旧版的
+	// String(x ?? "") / Array.isArray(...) 语义宽松处理，不整段报错。逐句输出拼回整段正文；兼容旧的整段格式。
+	parsed, err := coreai.ParsePassageReply(reply)
 	if err != nil {
 		return PassageResult{}, err
 	}
-	passage := strings.TrimSpace(coreai.AsString(raw["passage"]))
-	if passage == "" {
-		return PassageResult{}, coreai.NewAPIError("SERVER", "AI 没有生成短文")
-	}
+	passage := parsed.Body
 
 	wordStats := make([]PassageWordStat, len(rows))
 	missing := []string{}
@@ -509,25 +532,12 @@ func GeneratePassage(ctx context.Context, cache *AIConfigCache, q store.Querier,
 			missing = append(missing, w.Spelling)
 		}
 	}
-
-	title := "Reading"
-	if t := strings.TrimSpace(coreai.AsString(raw["title"])); t != "" {
-		title = t
+	questions := make([]PassageQuestion, len(parsed.Questions))
+	for i, qa := range parsed.Questions {
+		questions[i] = PassageQuestion{Q: qa.Q, A: qa.A}
 	}
-	titleCn := strings.TrimSpace(coreai.AsString(raw["titleCn"]))
-	passageCn := strings.TrimSpace(coreai.AsString(raw["passageCn"]))
-	questions := []PassageQuestion{}
-	if arr, ok := raw["questions"].([]any); ok {
-		for i, qv := range arr {
-			if i >= 5 {
-				break
-			}
-			qm := coreai.AsMap(qv)
-			questions = append(questions, PassageQuestion{Q: coreai.AsString(qm["q"]), A: coreai.AsString(qm["a"])})
-		}
-	}
-
-	return PassageResult{Title: title, TitleCn: titleCn, Passage: passage, PassageCn: passageCn, Questions: questions, Words: wordStats, MissingWords: missing}, nil
+	return PassageResult{Title: parsed.Title, TitleCn: parsed.TitleCn, Passage: passage, PassageCn: parsed.BodyCn, Questions: questions, Words: wordStats, MissingWords: missing,
+		Sentences: parsed.Sentences, Legacy: parsed.Legacy, Level: level}, nil
 }
 
 // SavePassage 把生成结果存进短文列表（对应旧 routes/ai.ts 里 /passages/generate 的 db.passage.create）。
@@ -544,7 +554,18 @@ func SavePassage(ctx context.Context, q store.Querier, now time.Time, userID, mo
 	if err != nil {
 		return "", err
 	}
-	// 逐句结构（spec 0004 §4）：中英句数一致时拆分；0005 让 AI 直接按句输出后改为直接保存
+	// 逐句结构：AI 按句输出时直接保存这些句子（spec 0005 §5）；旧的整段格式按 spec 0004 §4 拆分（句数不一致时保持整段）
+	if !r.Legacy && len(r.Sentences) > 0 {
+		lx, err := LoadLexicon(ctx, q)
+		if err != nil {
+			return "", err
+		}
+		m := model
+		if err := savePassageItems(ctx, q, lx, now, id, userID, &m, r.Sentences); err != nil {
+			return "", err
+		}
+		return id, nil
+	}
 	if err := SavePassageSentences(ctx, q, now, id); err != nil {
 		return "", err
 	}

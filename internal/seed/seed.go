@@ -14,6 +14,7 @@ import (
 
 	vinxvocab "github.com/vinx-lab/vinx-vocab-go"
 	"github.com/vinx-lab/vinx-vocab-go/internal/auth"
+	coreai "github.com/vinx-lab/vinx-vocab-go/internal/core/ai"
 	"github.com/vinx-lab/vinx-vocab-go/internal/core/vocabparser"
 	"github.com/vinx-lab/vinx-vocab-go/internal/school"
 	"github.com/vinx-lab/vinx-vocab-go/internal/service"
@@ -112,8 +113,9 @@ func SeedBooks(ctx context.Context, db *store.DB, now time.Time, ownerID *string
 		var res service.ImportResult
 		err = db.Tx(ctx, func(tx *sql.Tx) error {
 			ts := store.NewTime(now)
-			if _, err := tx.ExecContext(ctx, `INSERT INTO "Book" ("id","name","description","isSystem","ownerId","sortOrder","createdAt","updatedAt") VALUES (?,?,?,?,?,?,?,?)`,
-				bookID, b.Name, b.Description, true, ownerID, i, ts, ts); err != nil {
+			// 学段按书名写入（spec 0005 §1）
+			if _, err := tx.ExecContext(ctx, `INSERT INTO "Book" ("id","name","description","isSystem","ownerId","sortOrder","level","createdAt","updatedAt") VALUES (?,?,?,?,?,?,?,?,?)`,
+				bookID, b.Name, b.Description, true, ownerID, i, coreai.LevelForBookName(b.Name), ts, ts); err != nil {
 				return err
 			}
 			var err error

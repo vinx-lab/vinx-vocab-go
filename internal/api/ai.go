@@ -30,14 +30,28 @@ type passagePreviewBody struct {
 	Source  httpx.Opt[string]   `json:"source"`
 	Count   httpx.Opt[float64]  `json:"count"`
 	Topic   httpx.Opt[string]   `json:"topic"`
+	Level   httpx.Opt[string]   `json:"level"` // spec 0005：临时学段
 
 	wordIDs []string
 	source  string
 	count   int
 	topic   *string
+	level   *string
+}
+
+// optLevel 可选的学段（spec 0005）：缺省返回 nil，非法 → 400。
+func optLevel(v *httpx.V, o httpx.Opt[string]) *string {
+	if !o.Set {
+		return nil
+	}
+	if l := v.Enum("level", o, coreai.Levels, ""); l != "" {
+		return &l
+	}
+	return nil
 }
 
 func (b *passagePreviewBody) Validate(v *httpx.V) {
+	b.level = optLevel(v, b.Level)
 	if b.WordIDs.Set {
 		if b.WordIDs.Null {
 			v.Add("wordIds", "Expected array, received null")
@@ -59,6 +73,7 @@ type passageGenerateBody struct {
 	Source  httpx.Opt[string]   `json:"source"`
 	Count   httpx.Opt[float64]  `json:"count"`
 	Topic   httpx.Opt[string]   `json:"topic"`
+	Level   httpx.Opt[string]   `json:"level"`
 	Prompt  httpx.Opt[string]   `json:"prompt"`
 
 	preview passagePreviewBody
@@ -66,7 +81,7 @@ type passageGenerateBody struct {
 }
 
 func (b *passageGenerateBody) Validate(v *httpx.V) {
-	b.preview = passagePreviewBody{WordIDs: b.WordIDs, Source: b.Source, Count: b.Count, Topic: b.Topic}
+	b.preview = passagePreviewBody{WordIDs: b.WordIDs, Source: b.Source, Count: b.Count, Topic: b.Topic, Level: b.Level}
 	b.preview.Validate(v)
 	b.prompt = v.OptStr("prompt", b.Prompt, httpx.Max(20_000))
 }
@@ -76,15 +91,18 @@ type unitExamplesBody struct {
 	Limit       httpx.Opt[float64]  `json:"limit"`
 	OverwriteAi httpx.Opt[bool]     `json:"overwriteAi"`
 	Prompt      httpx.Opt[string]   `json:"prompt"`
+	Level       httpx.Opt[string]   `json:"level"` // spec 0005
 
 	wordIDs     []string
 	hasWordIDs  bool
 	limit       int
 	overwriteAi bool
 	prompt      *string
+	level       *string
 }
 
 func (b *unitExamplesBody) Validate(v *httpx.V) {
+	b.level = optLevel(v, b.Level)
 	if b.WordIDs.Set {
 		if b.WordIDs.Null {
 			v.Add("wordIds", "Expected array, received null")
@@ -102,12 +120,15 @@ func (b *unitExamplesBody) Validate(v *httpx.V) {
 type wordExampleBody struct {
 	WordIDs httpx.Opt[[]string] `json:"wordIds"`
 	Prompt  httpx.Opt[string]   `json:"prompt"`
+	Level   httpx.Opt[string]   `json:"level"` // spec 0005
 
 	wordIDs []string
 	prompt  *string
+	level   *string
 }
 
 func (b *wordExampleBody) Validate(v *httpx.V) {
+	b.level = optLevel(v, b.Level)
 	if b.WordIDs.Set {
 		if b.WordIDs.Null {
 			v.Add("wordIds", "Expected array, received null")
@@ -118,6 +139,14 @@ func (b *wordExampleBody) Validate(v *httpx.V) {
 	}
 	b.prompt = v.OptStr("prompt", b.Prompt, httpx.Max(20_000))
 }
+
+// levelOnlyBody 单个词例句预览：原来不读请求体，spec 0005 只增加可选的 level（其余字段忽略）。
+type levelOnlyBody struct {
+	Level httpx.Opt[string] `json:"level"`
+	level *string
+}
+
+func (b *levelOnlyBody) Validate(v *httpx.V) { b.level = optLevel(v, b.Level) }
 
 // visiblePrompt 页面提交的可见提示词：不能为空、最多 6000 字（去掉首尾空白后）。
 func visiblePrompt(raw *string) (*string, error) {
@@ -385,7 +414,15 @@ func registerAI(r *Router, d *Deps) {
 		if err := assertWordEditable(ctx, d, id); err != nil {
 			return err
 		}
-		preview, err := service.PreviewExamples(ctx, d.AIConfig, d.DB, []string{id})
+		body, err := httpx.Decode[levelOnlyBody](req)
+		if err != nil {
+			return err
+		}
+		level, err := service.WordLevel(ctx, d.DB, id, body.level)
+		if err != nil {
+			return err
+		}
+		preview, err := service.PreviewExamples(ctx, d.AIConfig, d.DB, []string{id}, level)
 		if err != nil {
 			return err
 		}
@@ -417,12 +454,20 @@ func registerAI(r *Router, d *Deps) {
 		if err := assertAiEnabled(ctx, d); err != nil {
 			return err
 		}
+		level, err := service.WordLevel(ctx, d.DB, id, body.level)
+		if err != nil {
+			return err
+		}
+		known, err := service.KnownWordsForWord(ctx, d.DB, id)
+		if err != nil {
+			return err
+		}
 		started, err := startAIJob(d, actor.ID, coreai.JobKindExample, func(ctx context.Context) (service.AiExamplesJobResult, error) {
 			cfg, err := d.AIConfig.Config(ctx, d.DB, d.Cfg)
 			if err != nil {
 				return service.AiExamplesJobResult{}, err
 			}
-			r, err := service.GenerateExamples(ctx, d.AIConfig, d.DB, d.Now(), cfg.ToCallConfig(), []string{id}, prompt)
+			r, err := service.GenerateExamples(ctx, d.AIConfig, d.DB, d.Now(), cfg.ToCallConfig(), []string{id}, prompt, service.GenOptions{Level: level, Known: known})
 			if err != nil {
 				return service.AiExamplesJobResult{}, err
 			}
@@ -453,7 +498,11 @@ func registerAI(r *Router, d *Deps) {
 		if err != nil {
 			return err
 		}
-		preview, err := service.PreviewExamples(ctx, d.AIConfig, d.DB, ids)
+		level, err := service.UnitLevel(ctx, d.DB, id, body.level)
+		if err != nil {
+			return err
+		}
+		preview, err := service.PreviewExamples(ctx, d.AIConfig, d.DB, ids, level)
 		if err != nil {
 			return err
 		}
@@ -490,12 +539,20 @@ func registerAI(r *Router, d *Deps) {
 		if err := assertAiEnabled(ctx, d); err != nil {
 			return err
 		}
+		level, err := service.UnitLevel(ctx, d.DB, id, body.level)
+		if err != nil {
+			return err
+		}
+		known, err := service.KnownWordsUpToUnit(ctx, d.DB, id)
+		if err != nil {
+			return err
+		}
 		started, err := startAIJob(d, actor.ID, coreai.JobKindExamples, func(ctx context.Context) (service.AiExamplesJobResult, error) {
 			cfg, err := d.AIConfig.Config(ctx, d.DB, d.Cfg)
 			if err != nil {
 				return service.AiExamplesJobResult{}, err
 			}
-			r, err := service.GenerateExamples(ctx, d.AIConfig, d.DB, d.Now(), cfg.ToCallConfig(), ids, prompt)
+			r, err := service.GenerateExamples(ctx, d.AIConfig, d.DB, d.Now(), cfg.ToCallConfig(), ids, prompt, service.GenOptions{Level: level, Known: known})
 			if err != nil {
 				return service.AiExamplesJobResult{}, err
 			}
@@ -526,7 +583,11 @@ func registerAI(r *Router, d *Deps) {
 		if err != nil {
 			return err
 		}
-		preview, err := service.PreviewPassage(ctx, d.AIConfig, d.DB, ids, valOr(body.topic, ""))
+		level, err := service.LearnerLevel(ctx, d.DB, service.TargetUsesClasses(actor), actor.ID, body.level)
+		if err != nil {
+			return err
+		}
+		preview, err := service.PreviewPassage(ctx, d.AIConfig, d.DB, ids, valOr(body.topic, ""), level)
 		if err != nil {
 			return err
 		}
@@ -557,12 +618,16 @@ func registerAI(r *Router, d *Deps) {
 			return err
 		}
 		topic := valOr(body.preview.topic, "")
+		level, err := service.LearnerLevel(ctx, d.DB, service.TargetUsesClasses(actor), actor.ID, body.preview.level)
+		if err != nil {
+			return err
+		}
 		started, err := startAIJob(d, actor.ID, coreai.JobKindPassage, func(ctx context.Context) (aiPassageJobResult, error) {
 			cfg, err := d.AIConfig.Config(ctx, d.DB, d.Cfg)
 			if err != nil {
 				return aiPassageJobResult{}, err
 			}
-			result, err := service.GeneratePassage(ctx, d.AIConfig, d.DB, cfg.ToCallConfig(), ids, prompt, topic)
+			result, err := service.GeneratePassage(ctx, d.AIConfig, d.DB, cfg.ToCallConfig(), ids, prompt, topic, level)
 			if err != nil {
 				return aiPassageJobResult{}, err
 			}
@@ -570,7 +635,15 @@ func registerAI(r *Router, d *Deps) {
 			if err != nil {
 				return aiPassageJobResult{}, err
 			}
-			return aiPassageJobResult{ID: id, Title: result.Title, MissingWords: result.MissingWords}, nil
+			wordIDs := make([]string, len(result.Words))
+			for i, w := range result.Words {
+				wordIDs[i] = w.WordID
+			}
+			sentences, err := service.CheckPassageSentences(ctx, d.DB, id, actor.ID, wordIDs, level)
+			if err != nil {
+				return aiPassageJobResult{}, err
+			}
+			return aiPassageJobResult{ID: id, Title: result.Title, MissingWords: result.MissingWords, Level: level, Sentences: sentences}, nil
 		})
 		if err != nil {
 			return err
@@ -691,6 +764,9 @@ type aiPassageJobResult struct {
 	ID           string   `json:"id"`
 	Title        string   `json:"title"`
 	MissingWords []string `json:"missingWords"`
+	// spec 0005：这次用的学段、保存下来的逐句结构与每句的检查结果
+	Level     string                         `json:"level"`
+	Sentences []service.PassageSentenceCheck `json:"sentences"`
 }
 
 type passageListQuery struct {
