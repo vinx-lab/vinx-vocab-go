@@ -11,6 +11,7 @@ import type { Mode, SessionAnswer, SessionItem, StudySessionData, TodayData } fr
 import { KIND_LABEL, MODE_LABEL } from "@/types";
 import { deriveFlow, type Question } from "./engine";
 import { regenerateLink } from "@/pages/sheets/links";
+import { WordSentencesBlock } from "@/components/SentenceView";
 
 // 迁移说明：键盘监听与「快照 → 本地状态」同步用 useLayoutEffect。Preact 的 useEffect 要到下一帧才执行，
 // 连续快速按键时监听器里的闭包（当前是否最后一张卡、是否已作答）会是旧的；React 对键盘等离散事件会同步执行 effect，
@@ -272,6 +273,7 @@ function CardsStage({ items, autoSpeak, onDone }: { items: SessionItem[]; autoSp
             {item.exampleCn && <div className="vx-example-cn" style={{ marginTop: 4 }}>{item.exampleCn}</div>}
           </div>
         )}
+        <CardSentences key={item.wordId} wordId={item.wordId} />
       </div>
       <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
         <Button size="large" icon={<ArrowLeftOutlined />} disabled={index === 0} onClick={() => setIndex((i) => i - 1)} aria-label="上一个" />
@@ -284,6 +286,23 @@ function CardsStage({ items, autoSpeak, onDone }: { items: SessionItem[]; autoSp
           <span key={w.wordId} style={{ width: i === index ? 18 : 6, height: 6, borderRadius: 3, background: i <= index ? "var(--primary)" : "var(--line)", transition: "all .2s" }} />
         ))}
       </div>
+    </div>
+  );
+}
+
+/** 单词卡上的「出现在这些句子里」（spec 0004）：默认收起，点开才请求，不打断翻卡 */
+function CardSentences({ wordId }: { wordId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ textAlign: "left" }}>
+      <Button type="link" size="small" style={{ padding: 0 }} onClick={(e) => { (e.currentTarget as HTMLElement).blur(); setOpen((v) => !v); }}>
+        {open ? "收起句子" : "出现在这些句子里"}
+      </Button>
+      {open && (
+        <div style={{ marginTop: 6 }}>
+          <WordSentencesBlock wordId={wordId} title="" links={false} />
+        </div>
+      )}
     </div>
   );
 }

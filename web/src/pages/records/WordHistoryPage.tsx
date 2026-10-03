@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import type { WordHistory } from "@/types";
 import { RATING_LABEL } from "@/types";
 import { ErrorBlock, Loading, MasteryTag, PageHeader, SpeakButton, StatTile } from "@/components/ui";
+import { WordSentencesBlock } from "@/components/SentenceView";
 import { AnswerChip, PHASE_LABEL, fmtDate, fmtDay, fmtTime, withUser } from "./shared";
 
 interface TimelineEntry {
@@ -121,6 +122,10 @@ export function WordHistoryPage() {
             {word.exampleCn && <div className="vx-example-cn" style={{ marginTop: 2 }}>{word.exampleCn}</div>}
           </div>
         )}
+      </div>
+
+      <div className="vx-card" style={{ padding: 16, marginBottom: 16 }}>
+        <WordSentencesBlock key={word.id} wordId={word.id} />
       </div>
 
       {memory ? (

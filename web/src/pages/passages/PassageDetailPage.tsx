@@ -6,6 +6,7 @@ import { ArrowLeftOutlined, DeleteOutlined } from "@/ui";
 import { api, errorMessage } from "@/lib/api";
 import { ErrorBlock, Loading, PageHeader, SpeakButton, speak } from "@/components/ui";
 import type { PassageDetail } from "@/types";
+import { TextReader } from "@/components/SentenceView";
 
 /** 短文阅读：目标词高亮可点读，中文翻译与理解题按需展开 */
 export function PassageDetailPage() {
@@ -34,6 +35,9 @@ export function PassageDetailPage() {
   if (q.isLoading) return <div className="vx-page"><Loading /></div>;
   if (q.isError || !q.data) return <div className="vx-page"><ErrorBlock error={q.error} onRetry={() => q.refetch()} /></div>;
   const p = q.data;
+  // spec 0004：已拆成逐句结构的短文按句显示；句数对不上没拆的旧短文照旧整段显示
+  const bySentence = (p.sentences?.length ?? 0) > 0;
+  const targetIds = new Set(p.words.map((w) => w.id));
 
   /** 把目标词标出来，点一下就朗读 */
   const renderParagraph = (text: string, key: number) => {
@@ -107,11 +111,17 @@ export function PassageDetailPage() {
         title="短文"
         extra={
           <span style={{ fontSize: 13 }}>
-            中文 <Switch size="small" checked={showCn} onChange={setShowCn} />
+            {bySentence ? "整篇译文" : "中文"} <Switch size="small" checked={showCn} onChange={setShowCn} />
           </span>
         }
       >
-        {paragraphs.map((t, i) => (
+        {bySentence ? (
+          <>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>点一句看这一句的译文和释义，点高亮的词朗读</div>
+            <TextReader sentences={p.sentences!} targets={targetIds} showCn={showCn} />
+          </>
+        ) : (
+        paragraphs.map((t, i) => (
           <div key={i}>
             {renderParagraph(t, i)}
             {showCn && cnParagraphs[i] && (
@@ -120,8 +130,9 @@ export function PassageDetailPage() {
               </p>
             )}
           </div>
-        ))}
-        {showCn && cnParagraphs.length > paragraphs.length && (
+        ))
+        )}
+        {!bySentence && showCn && cnParagraphs.length > paragraphs.length && (
           <p className="vx-cn" style={{ color: "var(--ink-soft)" }}>{cnParagraphs.slice(paragraphs.length).join(" ")}</p>
         )}
       </Card>

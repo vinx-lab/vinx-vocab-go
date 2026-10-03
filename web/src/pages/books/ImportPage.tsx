@@ -3,15 +3,20 @@ import type { ComponentChildren } from "preact";
 import { useNavigate, useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@/lib/query";
 import { useIdentity } from "@/lib/auth";
-import { Alert, Button, Checkbox, Col, Collapse, Form, Input, Radio, Result, Row, Select, Space, Steps, Switch, Table, Tag, Upload, useApp, ArrowLeftOutlined, FileTextOutlined, UploadOutlined } from "@/ui";
+import { Alert, Button, Checkbox, Col, Collapse, Form, Input, Radio, Result, Row, Segmented, Select, Space, Steps, Switch, Table, Tag, Upload, useApp, ArrowLeftOutlined, FileTextOutlined, UploadOutlined } from "@/ui";
 import { api, errorMessage } from "@/lib/api";
 import { can } from "@/lib/perms";
-import type { Book, BookDetail, ImportPreview, ImportPreviewEntry, Paged } from "@/types";
+import type { Book, BookDetail, ImportPreview, ImportPreviewEntry, Paged, TextKind } from "@/types";
 import { PageHeader, StatTile } from "@/components/ui";
+import { previewTextsPayload, type EditPreviewSentence, type EditPreviewText } from "@/lib/sentences";
+import { TextsPreviewList, toEditTexts } from "./TextsPreview";
 
 type EditEntry = ImportPreviewEntry & { key: string; include: boolean };
-type EditUnit = { key: string; name: string; entries: EditEntry[] };
-type ImportResult = { bookId: string; units: number; unitsCreated: number; wordsLinked: number; wordsCreated: number; wordsReused: number };
+/** texts：这个单元的句型 / 课文段（spec 0004） */
+type EditUnit = { key: string; name: string; entries: EditEntry[]; texts: EditPreviewText[] };
+type ImportResult = { bookId: string; units: number; unitsCreated: number; wordsLinked: number; wordsCreated: number; wordsReused: number; texts?: number; sentences?: number };
+/** 检查修正这一步的标签：词表 / 句型（list）/ 课文（text） */
+type PreviewTab = "words" | TextKind;
 type EditableField = "spelling" | "phonetic" | "partOfSpeech" | "definition";
 
 const STATUS_TAG: Record<ImportPreviewEntry["status"], { color: string; label: string }> = {
@@ -24,6 +29,12 @@ const SAMPLE = `Unit 1
 dinosaur /'daɪnəsɔː(r)/ n. 恐龙
 museum /mju'ziːəm/ n. 博物馆
 be good at 擅长……
+[句型]
+I find ... useful. | 我发现……很有用。 | I find making word cards useful.
+[课文]
+Title: My Weekend | 我的周末
+I went to the museum. | 我去了博物馆。
+I saw a dinosaur there. | 我在那里看到了一只恐龙。
 
 Unit 2
 weather /'weðə(r)/ n. 天气`;
@@ -46,6 +57,7 @@ export function ImportPage() {
   const [stats, setStats] = useState<ImportPreview["stats"] | null>(null);
   const [units, setUnits] = useState<EditUnit[]>([]);
   const [onlyIssues, setOnlyIssues] = useState(false);
+  const [previewTab, setPreviewTab] = useState<PreviewTab>("words");
   // 第 3 步
   const [targetType, setTargetType] = useState<"existing" | "new">("existing");
   const [targetBookId, setTargetBookId] = useState<string | undefined>(fixedBookId);
@@ -75,10 +87,12 @@ export function ImportPage() {
           key: `u${ui}`,
           name: u.name,
           entries: u.entries.map((e, ei) => ({ ...e, key: `u${ui}-${ei}`, include: e.status !== "error" })),
+          texts: toEditTexts(u.texts),
         })),
       );
       setOnlyIssues(false);
-      if (data.stats.entries === 0) {
+      setPreviewTab(data.stats.entries === 0 && (data.stats.sentences ?? 0) > 0 ? (data.units.some((u) => u.texts?.some((t) => t.kind === "list")) ? "list" : "text") : "words");
+      if (data.stats.entries === 0 && !data.stats.sentences) {
         message.warning("没有解析出任何词条，请检查格式");
         return;
       }
@@ -108,28 +122,48 @@ export function ImportPage() {
     setUnits((prev) => prev.map((u) => (u.key !== unitKey ? u : { ...u, entries: u.entries.map((e) => ({ ...e, include })) })));
   }
 
+  function updateSentence(unitKey: string, textIndex: number, sentenceIndex: number, patch: Partial<EditPreviewSentence>) {
+    setUnits((prev) =>
+      prev.map((u) =>
+        u.key !== unitKey
+          ? u
+          : { ...u, texts: u.texts.map((t, i) => (i !== textIndex ? t : { ...t, sentences: t.sentences.map((s, j) => (j === sentenceIndex ? { ...s, ...patch } : s)) })) },
+      ),
+    );
+  }
+  function updateText(unitKey: string, textIndex: number, patch: Partial<Pick<EditPreviewText, "title" | "titleCn">>) {
+    setUnits((prev) => prev.map((u) => (u.key !== unitKey ? u : { ...u, texts: u.texts.map((t, i) => (i === textIndex ? { ...t, ...patch } : t)) })));
+  }
+
   const payloadUnits = useMemo(
     () =>
       units
-        .map((u) => ({
-          name: u.name.trim(),
-          entries: u.entries
-            .filter((e) => e.include)
-            .map((e) => ({
-              spelling: e.spelling.trim(),
-              phonetic: e.phonetic.trim() || null,
-              partOfSpeech: e.partOfSpeech.trim() || null,
-              definition: e.definition.trim(),
-              type: e.type,
-            })),
-        }))
-        .filter((u) => u.entries.length > 0),
+        .map((u) => {
+          const texts = previewTextsPayload(u.texts);
+          return {
+            name: u.name.trim(),
+            entries: u.entries
+              .filter((e) => e.include)
+              .map((e) => ({
+                spelling: e.spelling.trim(),
+                phonetic: e.phonetic.trim() || null,
+                partOfSpeech: e.partOfSpeech.trim() || null,
+                definition: e.definition.trim(),
+                type: e.type,
+              })),
+            // 没有句型 / 课文时不带这个字段，请求与原来一致
+            ...(texts.length > 0 ? { texts } : {}),
+          };
+        })
+        .filter((u) => u.entries.length > 0 || (u.texts?.length ?? 0) > 0),
     [units],
   );
   const includedCount = payloadUnits.reduce((s, u) => s + u.entries.length, 0);
+  const includedSentences = payloadUnits.reduce((s, u) => s + (u.texts ?? []).reduce((n, t) => n + t.sentences.length, 0), 0);
+  const hasTexts = units.some((u) => u.texts.length > 0);
 
   function goToTarget() {
-    if (includedCount === 0) return message.warning("没有勾选任何词条");
+    if (includedCount === 0 && includedSentences === 0) return message.warning("没有勾选任何词条");
     if (payloadUnits.some((u) => !u.name)) return message.warning("单元名称不能为空");
     const bad = payloadUnits.flatMap((u) => u.entries).find((e) => !e.spelling || !e.definition);
     if (bad) return message.warning(`已勾选的词条中有拼写或释义为空的（${bad.spelling || "空拼写"}），请修正或取消勾选`);
@@ -246,6 +280,12 @@ export function ImportPage() {
                 <li>
                   单元标题单独一行：<Code>Unit 1</Code>，其后的词归入该单元
                 </li>
+                <li>
+                  单元里可加 <Code>[句型]</Code> 段：每行 <Code>英文 | 中文</Code>，带「...」的句型第三列写完整例句
+                </li>
+                <li>
+                  <Code>[课文]</Code> 段：可加一行 <Code>Title: 英文标题 | 中文标题</Code>，每行一句，空行分段
+                </li>
                 <li>音标、词性可省略；同一单元内重复的词会自动合并</li>
                 <li>词库按拼写去重，已有的词会复用已有词条</li>
                 <li>文件请使用 UTF-8 编码</li>
@@ -268,6 +308,7 @@ export function ImportPage() {
               { label: "需检查", value: stats.warning, tone: "accent" as const },
               { label: "错误", value: stats.error, tone: "accent" as const },
               { label: "词库已有", value: stats.existing },
+              ...(stats.sentences ? [{ label: "句子", value: stats.sentences }] : []),
             ].map((s) => (
               <Col key={s.label} xs={8} sm={4}>
                 <StatTile label={s.label} value={s.value} tone={s.tone} style={{ padding: "10px 12px" }} />
@@ -275,6 +316,24 @@ export function ImportPage() {
             ))}
           </Row>
 
+          {hasTexts && (
+            <Segmented
+              className="vx-import-tabs"
+              value={previewTab}
+              onChange={(v) => setPreviewTab(v as PreviewTab)}
+              style={{ marginBottom: 12 }}
+              options={[
+                { value: "words", label: `词表 ${stats.entries}` },
+                { value: "list", label: `句型 ${sentenceCount(units, "list")}` },
+                { value: "text", label: `课文 ${sentenceCount(units, "text")}` },
+              ]}
+            />
+          )}
+
+          {previewTab !== "words" ? (
+            <TextsTab units={units} kind={previewTab} onSentence={updateSentence} onText={updateText} />
+          ) : (
+          <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
             <Space>
               <Switch checked={onlyIssues} onChange={setOnlyIssues} />
@@ -319,11 +378,13 @@ export function ImportPage() {
               })
               .filter((x): x is NonNullable<typeof x> => x !== null)}
           />
+          </>
+          )}
 
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16, gap: 8 }}>
             <Button onClick={() => setStep(0)}>上一步</Button>
             <Button type="primary" onClick={goToTarget}>
-              下一步：选择目标（{includedCount} 条）
+              下一步：选择目标（{includedCount} 条{includedSentences ? ` · ${includedSentences} 句` : ""}）
             </Button>
           </div>
         </>
@@ -332,7 +393,13 @@ export function ImportPage() {
       {step === 2 && (
         <div className="vx-card" style={{ padding: 18, maxWidth: 620 }}>
           <div style={{ marginBottom: 14, color: "var(--ink-soft)" }}>
-            将导入 <b className="vx-num">{payloadUnits.length}</b> 个单元、<b className="vx-num">{includedCount}</b> 个词条。
+            将导入 <b className="vx-num">{payloadUnits.length}</b> 个单元、<b className="vx-num">{includedCount}</b> 个词条
+            {includedSentences > 0 && (
+              <>
+                、<b className="vx-num">{includedSentences}</b> 个句子（句型与课文）
+              </>
+            )}
+            。
           </div>
           {fixedBookId ? (
             <Alert type="info" showIcon message={`导入到词书「${fixedBookName ?? "…"}」`} description="与已有单元同名的会合并到该单元，已在单元中的词不会重复添加。" />
@@ -391,6 +458,7 @@ export function ImportPage() {
               <span>
                 导入 {result.units} 个单元（新建 {result.unitsCreated} 个），加入单词 {result.wordsLinked} 个；其中新建词条 {result.wordsCreated} 个，复用词库已有 {result.wordsReused} 个。
                 {result.wordsLinked < result.wordsCreated + result.wordsReused && "部分词原本已在单元中，未重复添加。"}
+                {(result.texts ?? 0) > 0 && `句型与课文 ${result.texts} 篇、${result.sentences ?? 0} 句。`}
               </span>
             }
             extra={[
@@ -404,6 +472,44 @@ export function ImportPage() {
           />
         </div>
       )}
+    </div>
+  );
+}
+
+function sentenceCount(units: EditUnit[], kind: TextKind) {
+  return units.reduce((n, u) => n + u.texts.filter((t) => t.kind === kind).reduce((m, t) => m + t.sentences.length, 0), 0);
+}
+
+/** 「句型」「课文」标签：按单元列出这一类的段，逐句显示解析结果和超纲词 */
+function TextsTab({
+  units,
+  kind,
+  onSentence,
+  onText,
+}: {
+  units: EditUnit[];
+  kind: TextKind;
+  onSentence: (unitKey: string, textIndex: number, sentenceIndex: number, patch: Partial<EditPreviewSentence>) => void;
+  onText: (unitKey: string, textIndex: number, patch: Partial<Pick<EditPreviewText, "title" | "titleCn">>) => void;
+}) {
+  const blocks = units
+    .map((u) => ({ u, idx: u.texts.map((t, i) => (t.kind === kind ? i : -1)).filter((i) => i >= 0) }))
+    .filter((b) => b.idx.length > 0);
+  if (blocks.length === 0) return <div className="vx-card" style={{ padding: 24, color: "var(--muted)", textAlign: "center" }}>没有{kind === "list" ? "句型" : "课文"}</div>;
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      {blocks.map(({ u, idx }) => (
+        <div key={u.key} className="vx-card" style={{ padding: 14 }}>
+          <div className="vx-word" style={{ fontWeight: 600, marginBottom: 10 }}>
+            {u.name || "（未命名）"}
+          </div>
+          <TextsPreviewList
+            texts={idx.map((i) => u.texts[i])}
+            onSentence={(ti, si, patch) => onSentence(u.key, idx[ti], si, patch)}
+            onText={(ti, patch) => onText(u.key, idx[ti], patch)}
+          />
+        </div>
+      ))}
     </div>
   );
 }

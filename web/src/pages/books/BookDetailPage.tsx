@@ -16,6 +16,7 @@ import {
   Pagination,
   Popconfirm,
   Row,
+  Segmented,
   Select,
   Space,
   Spin,
@@ -35,7 +36,8 @@ import {
 import { AI_PROMPT_MAX_LENGTH, type AiExamplesJobResult, type AiJobStarted, type AiPreview, type AiPreviewWord } from "@vinx/shared";
 import { api, errorMessage } from "@/lib/api";
 import { can } from "@/lib/perms";
-import type { BookDetail, UnitWord, UnitWordsData } from "@/types";
+import type { BookDetail, Paged, TextKind, UnitText, UnitWord, UnitWordsData } from "@/types";
+import { UnitTextsPanel } from "./UnitTexts";
 import { EmptyBlock, ErrorBlock, Loading, PageHeader, SpeakButton } from "@/components/ui";
 import { useAiStatus } from "@/lib/useAiStatus";
 import { useAiJob } from "@/lib/useAiJob";
@@ -45,6 +47,8 @@ const PAGE_SIZE = 100;
 
 type WordForm = { spelling: string; phonetic?: string; partOfSpeech?: string; definition: string; example?: string; exampleCn?: string };
 type NameForm = { name: string; description?: string };
+/** 单元页面的标签：词表 / 句型（list）/ 课文（text） */
+type UnitTab = "words" | TextKind;
 /** 弹窗状态 */
 type Dialog =
   | { type: "book" }
@@ -86,6 +90,15 @@ export function BookDetailPage() {
     queryFn: () => api.get<UnitWordsData>(`/units/${activeUnitId}/words`, { page, limit: PAGE_SIZE, ...(q ? { q } : {}) }),
     enabled: !!activeUnitId,
     placeholderData: keepPreviousData,
+  });
+
+  // spec 0004：单元的句型 / 课文
+  const [tab, setTab] = useState<UnitTab>("words");
+  const textsQuery = useQuery({
+    queryKey: ["books", "unitTexts", activeUnitId],
+    queryFn: () => api.get<Paged<UnitText>>(`/units/${activeUnitId}/texts`),
+    enabled: !!activeUnitId,
+    keepPrevious: false,
   });
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["books"] });
@@ -163,6 +176,11 @@ export function BookDetailPage() {
   const activeUnit = book.units.find((u) => u.id === activeUnitId);
   const totalWords = book.units.reduce((s, u) => s + u.wordCount, 0);
   const isMobile = !screens.md;
+  /** 标签上的句子数（句型 / 课文） */
+  const textCount = (kind: TextKind) => {
+    const n = (textsQuery.data?.items ?? []).filter((t) => t.kind === kind).reduce((s, t) => s + t.sentences.length, 0);
+    return n ? ` ${n}` : "";
+  };
 
   const toggleSelect = (uid: string, checked: boolean) =>
     setSelected((prev) => {
@@ -352,6 +370,7 @@ export function BookDetailPage() {
                   <div style={{ fontSize: 12, color: "var(--muted)" }}>{wordsQuery.data ? `${wordsQuery.data.total} 词${q ? "（搜索结果）" : ""}` : " "}</div>
                 </div>
                 <Space wrap>
+                  {tab === "words" && (
                   <Input.Search
                     allowClear
                     placeholder="搜索拼写或释义"
@@ -362,22 +381,27 @@ export function BookDetailPage() {
                     }}
                     key={activeUnitId}
                   />
+                  )}
                   {editable && activeUnit && (
                     <>
-                      <Button type="primary" ghost icon={<PlusOutlined />} onClick={() => setDialog({ type: "addWord", unitId: activeUnit.id })}>
-                        添加单词
-                      </Button>
-                      {ai && (
-                        <Button icon={<ThunderboltOutlined />} onClick={() => setAiTarget({ kind: "unit", unitId: activeUnit.id })}>
-                          AI 补例句
-                        </Button>
-                      )}
-                      {audio && (
-                        <Tooltip title="预先抓取本单元的真人发音，学生端零等待">
-                          <Button icon={<SoundOutlined />} loading={prefetchAudio.isPending} onClick={() => prefetchAudio.mutate()}>
-                            缓存发音
+                      {tab === "words" && (
+                        <>
+                          <Button type="primary" ghost icon={<PlusOutlined />} onClick={() => setDialog({ type: "addWord", unitId: activeUnit.id })}>
+                            添加单词
                           </Button>
-                        </Tooltip>
+                          {ai && (
+                            <Button icon={<ThunderboltOutlined />} onClick={() => setAiTarget({ kind: "unit", unitId: activeUnit.id })}>
+                              AI 补例句
+                            </Button>
+                          )}
+                          {audio && (
+                            <Tooltip title="预先抓取本单元的真人发音，学生端零等待">
+                              <Button icon={<SoundOutlined />} loading={prefetchAudio.isPending} onClick={() => prefetchAudio.mutate()}>
+                                缓存发音
+                              </Button>
+                            </Tooltip>
+                          )}
+                        </>
                       )}
                       <Tooltip title="重命名单元">
                         <Button icon={<EditOutlined />} aria-label="重命名单元" onClick={() => setDialog({ type: "renameUnit", unitId: activeUnit.id, name: activeUnit.name })} />
@@ -397,7 +421,29 @@ export function BookDetailPage() {
                 </Space>
               </div>
 
-              {wordsQuery.isLoading ? (
+              <Segmented
+                className="vx-unit-tabs"
+                value={tab}
+                onChange={(v) => setTab(v as UnitTab)}
+                style={{ marginBottom: 12 }}
+                options={[
+                  { value: "words", label: `词表${wordsQuery.data && !q ? ` ${wordsQuery.data.total}` : ""}` },
+                  { value: "list", label: `句型${textCount("list")}` },
+                  { value: "text", label: `课文${textCount("text")}` },
+                ]}
+              />
+
+              {tab !== "words" ? (
+                textsQuery.isLoading ? (
+                  <div style={{ padding: 40, textAlign: "center" }}>
+                    <Spin />
+                  </div>
+                ) : textsQuery.error || !textsQuery.data || !activeUnit ? (
+                  <ErrorBlock error={textsQuery.error ?? new Error("加载失败")} onRetry={() => textsQuery.refetch()} />
+                ) : (
+                  <UnitTextsPanel key={`${activeUnit.id}-${tab}`} unitId={activeUnit.id} kind={tab} editable={editable} texts={textsQuery.data.items} />
+                )
+              ) : wordsQuery.isLoading ? (
                 <div style={{ padding: 40, textAlign: "center" }}>
                   <Spin />
                 </div>

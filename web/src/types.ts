@@ -326,8 +326,141 @@ export interface ImportPreviewEntry {
 }
 
 export interface ImportPreview {
-  units: { name: string; entries: ImportPreviewEntry[] }[];
-  stats: { units: number; entries: number; ok: number; warning: number; error: number; existing: number };
+  /** texts：单元里的句型 / 课文段（spec 0004；没有时缺省） */
+  units: { name: string; entries: ImportPreviewEntry[]; texts?: PreviewText[] }[];
+  stats: { units: number; entries: number; ok: number; warning: number; error: number; existing: number; texts?: number; sentences?: number };
+}
+
+// ---------------- 句子与篇（spec 0004） ----------------
+
+export type TextKind = "text" | "list";
+
+/** 句中关联到的词（position 是第几个词，短语取起始位置；form 是句中写法） */
+export interface SentenceWordRef {
+  wordId: string;
+  position: number;
+  form: string;
+}
+
+export interface Sentence {
+  id: string;
+  en: string;
+  cn: string;
+  frame: string | null;
+  source: string;
+  paragraph: number;
+  words: SentenceWordRef[];
+}
+
+/** 单元的篇：课文（text）或句型清单（list） */
+export interface UnitText {
+  id: string;
+  unitId: string;
+  kind: TextKind;
+  title: string;
+  titleCn: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  sentences: Sentence[];
+}
+
+/** 分析结果里的一个词；wordId 为 null 表示尚未入库（导入预览里的新词） */
+export interface AnalyzedWord {
+  wordId: string | null;
+  spelling: string;
+  definition: string;
+  position: number;
+  form: string;
+}
+
+export interface SentenceAnalysis {
+  tokens: { text: string; index: number }[];
+  words: AnalyzedWord[];
+  /** 超纲词 */
+  outOfScope: AnalyzedWord[];
+  /** 词库外的词（人名、地名等） */
+  unknown: { text: string; index: number }[];
+}
+
+export interface PreviewSentence {
+  en: string;
+  cn: string;
+  /** 句型骨架；没有为空串 */
+  frame: string;
+  paragraph: number;
+  status: "ok" | "warning" | "error";
+  issues: string[];
+  raw: string;
+  line: number;
+  words: AnalyzedWord[];
+  outOfScope: AnalyzedWord[];
+  unknown: string[];
+}
+
+export interface PreviewText {
+  kind: TextKind;
+  title: string;
+  titleCn: string;
+  line: number;
+  sentences: PreviewSentence[];
+}
+
+export interface TextsPreview {
+  texts: PreviewText[];
+  stats: { texts: number; sentences: number; ok: number; warning: number; error: number };
+}
+
+/** 新建 / 导入篇的请求体 */
+export interface TextInput {
+  title: string;
+  titleCn?: string | null;
+  kind: TextKind;
+  sentences: SentenceInput[];
+}
+
+export interface SentenceInput {
+  id?: string;
+  en: string;
+  cn: string;
+  frame?: string | null;
+  paragraph?: number;
+}
+
+export interface SentenceFrom {
+  type: "example" | "unitText" | "passage";
+  wordId?: string;
+  spelling?: string;
+  textId?: string;
+  kind?: TextKind;
+  title?: string;
+  unitId?: string;
+  unitName?: string;
+  bookId?: string;
+  bookName?: string;
+  passageId?: string;
+}
+
+export interface WordSentenceItem extends Sentence {
+  from: SentenceFrom;
+}
+
+/** GET /words/:id/sentences：按来源分组 */
+export interface WordSentences {
+  examples: WordSentenceItem[];
+  patterns: WordSentenceItem[];
+  texts: WordSentenceItem[];
+  passages: WordSentenceItem[];
+}
+
+/** GET /words/:id */
+export interface WordDetail {
+  id: string;
+  spelling: string;
+  type: string;
+  phonetic: string | null;
+  partOfSpeech: string | null;
+  definition: string;
 }
 
 // ---------------- 班级 ----------------
@@ -574,6 +707,8 @@ export interface PassageDetail {
   words: { id: string; spelling: string; definition: string; phonetic: string | null }[];
   model: string | null;
   createdAt: string;
+  /** spec 0004：逐句结构；没有拆分的旧短文为空数组（更老的后端缺省） */
+  sentences?: Sentence[];
 }
 
 export interface PassageListItem {
