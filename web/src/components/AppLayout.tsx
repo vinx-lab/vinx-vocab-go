@@ -125,7 +125,8 @@ export function AppLayout({ children }: { children: ComponentChildren }) {
     selectedKeys: [`theme:${themePref}`],
     onClick: ({ key }: { key: string }) => {
       if (key === "logout") {
-        void logout().then(() => location.route("/login"));
+        // 开发模式「仅本标签页」下退出后回到浏览器账号的首页，否则到登录页
+        void logout().then((to) => location.route(to));
         return;
       }
       if (key.startsWith("theme:")) {

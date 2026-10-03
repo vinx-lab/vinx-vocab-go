@@ -1,7 +1,8 @@
 import { isThemePref, type ThemePref } from "@vinx/shared";
+import { userStorage } from "@/lib/tabSession";
 
 /**
- * 外观偏好：跟账号保存，localStorage 只做缓存。
+ * 外观偏好：跟账号保存，localStorage 只做缓存（开发模式「仅本标签页」下改存 sessionStorage，见 tabSession.ts）。
  * index.html 的内联脚本在渲染前按同样规则读缓存、设 data-theme（避免刷新闪白），规则改动时两处一起改。
  */
 export const THEME_STORAGE_KEY = "vinx_theme";
@@ -27,7 +28,7 @@ export function mergeThemePref(cached: unknown, account: unknown): ThemePref {
 
 export function readCachedTheme(): ThemePref {
   try {
-    return mergeThemePref(localStorage.getItem(THEME_STORAGE_KEY), undefined);
+    return mergeThemePref(userStorage().getItem(THEME_STORAGE_KEY), undefined);
   } catch {
     return "system";
   }
@@ -36,7 +37,7 @@ export function readCachedTheme(): ThemePref {
 /** 写缓存并通知当前页面；退出登录不调用它，缓存保留给登录页 */
 export function writeCachedTheme(pref: ThemePref) {
   try {
-    localStorage.setItem(THEME_STORAGE_KEY, pref);
+    userStorage().setItem(THEME_STORAGE_KEY, pref);
   } catch {
     /* 隐私模式等写不进去：只影响刷新后的首帧 */
   }

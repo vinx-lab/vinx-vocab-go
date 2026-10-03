@@ -69,6 +69,34 @@ func TestDataDirNotWritable(t *testing.T) {
 	}
 }
 
+func TestDevFlag(t *testing.T) {
+	var errb bytes.Buffer
+	f, err := parseFlags("serve", []string{"--dev", "--data", t.TempDir()}, &errb, true)
+	if err != nil || !f.dev {
+		t.Fatalf("--dev 未解析：%+v %v", f, err)
+	}
+	cfg, err := loadConfig(f)
+	if err != nil || !cfg.Dev {
+		t.Fatalf("cfg.Dev = %v %v", cfg != nil && cfg.Dev, err)
+	}
+	// seed-demo 等子命令不接受 --dev
+	if _, err := parseFlags("seed-demo", []string{"--dev"}, &errb, false); err == nil {
+		t.Fatal("seed-demo 不应接受 --dev")
+	}
+
+	var out bytes.Buffer
+	printBanner(&out, cfg)
+	if !strings.Contains(out.String(), "开发模式：任何能访问本服务的人都可以免密登录任何账号，不要用于真实数据") {
+		t.Fatalf("开发模式缺少提示：%s", out.String())
+	}
+	cfg.Dev = false
+	out.Reset()
+	printBanner(&out, cfg)
+	if strings.Contains(out.String(), "开发模式") {
+		t.Fatalf("非开发模式不应提示：%s", out.String())
+	}
+}
+
 func TestVersionAndUnknown(t *testing.T) {
 	var out, errb bytes.Buffer
 	if code := run([]string{"version"}, &out, &errb); code != 0 || !strings.Contains(out.String(), "vinx-vocab") {

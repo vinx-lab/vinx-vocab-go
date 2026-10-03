@@ -45,7 +45,11 @@ type Config struct {
 
 	SignupEnabled bool
 
-	AudioDir         string
+	// Dev 开发模式（serve --dev）：开放免密切换账号的 /api/dev/* 接口。只认命令行参数，
+	// 不读环境变量或 config.toml，避免部署时被配置文件意外打开（spec 0002）。
+	Dev bool
+
+	AudioDir        string
 	AudioProviderURL string // 空串表示关闭真人发音
 
 	AIProvider  string // auto | openai | anthropic
@@ -60,6 +64,7 @@ type Options struct {
 	DataDir string // --data；空串用默认
 	Host    string // --host；空串用默认
 	Port    int    // --port；0 用默认
+	Dev     bool   // --dev：开发模式（只认命令行参数）
 
 	// Lookup 读环境变量（默认 os.LookupEnv）。
 	Lookup func(string) (string, bool)
@@ -131,7 +136,7 @@ func Load(o Options) (*Config, error) {
 	}
 	src := source{lookup: o.Lookup, file: file}
 
-	c := &Config{DataDir: abs, DBPath: filepath.Join(abs, "vinx.db")}
+	c := &Config{DataDir: abs, DBPath: filepath.Join(abs, "vinx.db"), Dev: o.Dev}
 
 	c.Host = o.Host
 	if c.Host == "" {

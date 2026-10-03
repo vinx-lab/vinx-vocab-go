@@ -1,15 +1,17 @@
 /**
  * 登录态（替代 refine authProvider）：
  * - 服务端种 HttpOnly cookie，前端只缓存身份快照 localStorage.vinx_user（不缓存 token）
+ * - 开发模式「仅本标签页」例外：令牌与身份快照都在 sessionStorage（见 tabSession.ts）
  * - 受保护区域首次渲染时走一次 /auth/me 校验（cookie 模式只能网络校验）
  * - 外观偏好以账号为准，拿到账号信息后同步到本地缓存
  */
 import { useEffect, useState } from "preact/hooks";
-import type { User } from "@vinx/shared";
-import { api } from "@/lib/api";
+import { normalizeThemePref, type User } from "@vinx/shared";
+import { api, type ApiError } from "@/lib/api";
 import { homePath } from "@/lib/perms";
-import { syncThemeFromAccount } from "@/lib/theme";
+import { THEME_STORAGE_KEY, readCachedTheme, syncThemeFromAccount, writeCachedTheme } from "@/lib/theme";
 import { clearCache } from "@/lib/query";
+import { isTabSession, setTabToken, userStorage } from "@/lib/tabSession";
 
 const STORAGE_KEY = "vinx_user";
 
@@ -21,7 +23,7 @@ const emit = () => subs.forEach((f) => f());
 
 function readCached(): User | null {
   try {
-    const v = localStorage.getItem(STORAGE_KEY);
+    const v = userStorage().getItem(STORAGE_KEY);
     return v ? (JSON.parse(v) as User) : null;
   } catch {
     return null;
@@ -30,8 +32,9 @@ function readCached(): User | null {
 function store(user: User | null) {
   identity = user;
   try {
-    if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    else localStorage.removeItem(STORAGE_KEY);
+    const s = userStorage();
+    if (user) s.setItem(STORAGE_KEY, JSON.stringify(user));
+    else s.removeItem(STORAGE_KEY);
   } catch {
     /* 隐私模式写不进去：只影响刷新后的首帧 */
   }
@@ -56,7 +59,14 @@ export async function check(): Promise<boolean> {
     store(user);
     syncThemeFromAccount(user.theme);
     return true;
-  } catch {
+  } catch (e) {
+    // 开发模式「仅本标签页」的令牌失效：退出本标签页模式，回到 Cookie 上的账号再校验一次
+    if (isTabSession() && (e as ApiError)?.statusCode === 401) {
+      dropTabSession();
+      identity = readCached();
+      writeCachedTheme(readCachedTheme());
+      return check();
+    }
     // 登录态失效（如会话过期）：清掉上一个账号的缓存，换账号登录时不会先闪出旧数据
     status = "out";
     store(null);
@@ -68,6 +78,8 @@ export async function check(): Promise<boolean> {
 /** 登录；返回登录后的落地页 */
 export async function login(email: string, password: string): Promise<string> {
   const data = await api.post<{ user: User }>("/auth/login", { email, password });
+  // 正常登录写的是 Cookie：退出本标签页模式，否则本标签页的令牌会盖过新 Cookie
+  dropTabSession();
   // 不经退出直接换账号时也清掉上一个账号的缓存
   if (identity && identity.id !== data.user.id) clearCache();
   status = "in";
@@ -79,13 +91,56 @@ export async function login(email: string, password: string): Promise<string> {
 
 /** 注册成功后记下身份（服务端已种 cookie） */
 export function setSignedIn(user: User) {
+  dropTabSession();
   if (identity && identity.id !== user.id) clearCache();
   status = "in";
   store(user);
   syncThemeFromAccount(user.theme);
 }
 
-export async function logout() {
+/** 清掉本标签页的令牌与缓存（开发模式「仅本标签页」） */
+function dropTabSession() {
+  setTabToken(null);
+  try {
+    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(THEME_STORAGE_KEY);
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/**
+ * 开发模式免密切换（spec 0002）；返回切换后的落地页。
+ * tab：令牌存本标签页，身份与外观缓存存 sessionStorage；browser：与正常登录一样由服务端种 Cookie，并退出本标签页模式。
+ */
+export async function impersonate(userId: string, scope: "tab" | "browser"): Promise<string> {
+  const data = await api.post<{ user: User; token?: string }>("/dev/impersonate", { userId, scope });
+  dropTabSession();
+  if (scope === "tab" && data.token) setTabToken(data.token);
+  // 与正常换账号登录相同：清掉上一个账号的查询缓存
+  clearCache();
+  status = "in";
+  store(data.user);
+  // 切换存储位置后当前缓存可能已是别的值：外观以账号为准，并通知页面
+  writeCachedTheme(normalizeThemePref(data.user.theme));
+  return homePath(data.user);
+}
+
+/** 退出「仅本标签页」模式，回到 Cookie 上的账号；返回落地页（Cookie 未登录时为 /login） */
+export async function restoreBrowserSession(): Promise<string> {
+  dropTabSession();
+  clearCache();
+  status = "unknown";
+  identity = readCached();
+  // 外观先回到浏览器缓存，再由 /auth/me 按账号同步
+  writeCachedTheme(readCachedTheme());
+  const ok = await check();
+  return ok ? homePath(identity) : "/login";
+}
+
+export async function logout(): Promise<string> {
+  // 仅本标签页模式：只清本标签页的令牌，不调用 /auth/logout（否则 Cookie 上的账号也会被退出）
+  if (isTabSession()) return restoreBrowserSession();
   try {
     await api.post("/auth/logout");
   } catch {
@@ -95,6 +150,7 @@ export async function logout() {
   status = "out";
   store(null);
   clearCache();
+  return "/login";
 }
 
 /** 当前身份（对应旧版 useGetIdentity）；refetch 重新走 /auth/me */

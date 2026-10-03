@@ -19,6 +19,8 @@ type AppConfig struct {
 	EditionLocked bool `json:"editionLocked"`
 	// NeedsSetup 首次运行：未锁定、未选择版本且还没有账号时，前端先进入版本向导（Go 版新增，见 NeedsSetup）。
 	NeedsSetup bool `json:"needsSetup"`
+	// Dev 以 serve --dev 启动：前端据此显示免密切换账号入口（Go 版新增，spec 0002）。
+	Dev bool `json:"dev"`
 }
 
 // SignupEnabled 个人版：只允许存在一个账号；班级版：开放注册（可用 SIGNUP_ENABLED 关闭）。

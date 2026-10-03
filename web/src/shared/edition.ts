@@ -54,4 +54,6 @@ export interface AppConfig {
   editionLocked: boolean;
   /** 首次运行：未锁定、未选择版本且还没有账号时为 true，前端先进入版本向导（Go 版新增） */
   needsSetup: boolean;
+  /** 以 serve --dev 启动：显示免密切换账号入口（Go 版新增，spec 0002） */
+  dev: boolean;
 }

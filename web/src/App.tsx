@@ -81,6 +81,19 @@ function Protected() {
   );
 }
 
+/** 开发模式（serve --dev）的切换账号入口：按需下载，不进正常构建的首屏包 */
+function DevSwitcherLoader() {
+  const [Comp, setComp] = useState<ComponentType | null>(null);
+  useEffect(() => {
+    let alive = true;
+    import("@/components/DevSwitcher").then((m) => alive && setComp(() => m.default));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return Comp ? <Comp /> : null;
+}
+
 function Root() {
   const { path } = useLocation();
   const config = useConfig();
@@ -88,7 +101,12 @@ function Root() {
   // 取 /config 期间留白（与旧版一致：旧版根部没有整页加载态，登录页 / 退出后只会短暂空白，不闪加载圈）
   if (config.isLoading) return null;
   if (config.needsSetup) return <SetupPage />;
-  return path === "/login" ? <LoginPage /> : <Protected />;
+  return (
+    <>
+      {path === "/login" ? <LoginPage /> : <Protected />}
+      {config.dev && <DevSwitcherLoader />}
+    </>
+  );
 }
 
 export function App() {

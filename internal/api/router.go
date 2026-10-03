@@ -29,6 +29,7 @@ var modules = []func(r *Router, d *Deps){
 	registerClasses,
 	registerUsers,
 	registerSheets,
+	registerDev,
 }
 
 // Handler 整个程序的 HTTP 入口：/api/ 下是 API（去掉前缀后与旧版路径一一对应），其余交给嵌入的前端。

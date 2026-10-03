@@ -1,6 +1,6 @@
 // vinx-vocab：Vinx Vocab 单文件版。
 //
-//	vinx-vocab [serve] [--port 3000] [--host 0.0.0.0] [--data DIR]   启动服务（默认子命令）
+//	vinx-vocab [serve] [--port 3000] [--host 0.0.0.0] [--data DIR] [--dev]   启动服务（默认子命令；--dev 开发模式）
 //	vinx-vocab seed-demo [--data DIR]                                 写入演示账号、班级与计划
 //	vinx-vocab import --from-postgres URL [--settings-secret S] [--force] [--edition E]   从旧版 PostgreSQL 导入
 //	vinx-vocab version                                                打印版本
@@ -66,7 +66,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func usage(w io.Writer) {
 	fmt.Fprint(w, `用法：
-  vinx-vocab [serve] [--port 3000] [--host 0.0.0.0] [--data 数据目录]   启动服务（默认）
+  vinx-vocab [serve] [--port 3000] [--host 0.0.0.0] [--data 数据目录] [--dev]
+                                                                        启动服务（默认）；--dev 开发模式，可免密切换账号，只用于测试数据
   vinx-vocab seed-demo [--data 数据目录]                               写入演示账号（密码 dev123456）、演示班级 DEMO01 与演示计划
   vinx-vocab audio prefetch [--data 目录] [--apply] [--limit N] [--delay 毫秒]
                                                                         全量预缓存真人发音（默认演练，--apply 才真的抓）
@@ -82,6 +83,7 @@ type commonFlags struct {
 	port int
 	host string
 	data string
+	dev  bool
 }
 
 func parseFlags(name string, args []string, stderr io.Writer, withListen bool) (*commonFlags, error) {
@@ -92,12 +94,13 @@ func parseFlags(name string, args []string, stderr io.Writer, withListen bool) (
 	if withListen {
 		fs.IntVar(&f.port, "port", 0, "监听端口（默认 3000）")
 		fs.StringVar(&f.host, "host", "", "监听地址（默认 0.0.0.0）")
+		fs.BoolVar(&f.dev, "dev", false, "开发模式：开放免密切换账号（只用于测试数据）")
 	}
 	return f, fs.Parse(args)
 }
 
 func loadConfig(f *commonFlags) (*config.Config, error) {
-	return config.Load(config.Options{DataDir: f.data, Host: f.host, Port: f.port})
+	return config.Load(config.Options{DataDir: f.data, Host: f.host, Port: f.port, Dev: f.dev})
 }
 
 func seedDemo(args []string, stdout, stderr io.Writer) int {
@@ -237,6 +240,9 @@ func printBanner(w io.Writer, cfg *config.Config) {
 		}
 	}
 	fmt.Fprintf(w, "  数据目录：  %s\n", cfg.DataDir)
+	if cfg.Dev {
+		fmt.Fprintln(w, "\n!!! 开发模式：任何能访问本服务的人都可以免密登录任何账号，不要用于真实数据 !!!")
+	}
 	if runtime.GOOS == "windows" {
 		fmt.Fprintln(w, "\n关闭此窗口即停止服务。")
 		fmt.Fprintln(w, "首次运行时 Windows 可能弹出防火墙提示：勾选「专用网络」并允许，手机才能通过局域网地址访问。")

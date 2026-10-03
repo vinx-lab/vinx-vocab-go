@@ -22,6 +22,20 @@ func TestDefaultDataDir(t *testing.T) {
 	}
 }
 
+// 开发模式只认命令行参数（Options.Dev），不读环境变量或 config.toml。
+func TestDevOnlyFromOptions(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "config.toml"), []byte("DEV = true\nVINX_DEV = true\n"), 0o600)
+	c, err := Load(Options{DataDir: dir, Lookup: env(map[string]string{"DEV": "true", "VINX_DEV": "1"})})
+	if err != nil || c.Dev {
+		t.Fatalf("环境变量 / config.toml 不应打开开发模式：%v %v", c != nil && c.Dev, err)
+	}
+	c, err = Load(Options{DataDir: dir, Dev: true, Lookup: env(nil)})
+	if err != nil || !c.Dev {
+		t.Fatalf("Options.Dev 应打开开发模式：%v %v", c != nil && c.Dev, err)
+	}
+}
+
 func TestLoadDefaultsAndSecretGeneration(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "sub", "data")
 	c, err := Load(Options{DataDir: dir, Lookup: env(nil)})

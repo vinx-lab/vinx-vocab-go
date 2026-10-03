@@ -2,6 +2,8 @@
  * 业务请求封装：自动加 /api 前缀、带 cookie、解包 { success, data } 包络。
  * 失败抛出带 statusCode / code / requestId / errors 的 Error（与旧版 httpClient 拦截器一致）。
  */
+import { getTabToken } from "@/lib/tabSession";
+
 export interface ApiError extends Error {
   statusCode: number;
   code?: string;
@@ -38,6 +40,9 @@ function qs(params?: Record<string, unknown>): string {
 /** 底层请求：返回解包后的 data */
 export async function request<T>(method: string, url: string, body?: unknown, params?: Record<string, unknown>): Promise<T> {
   const headers: Record<string, string> = {};
+  // 开发模式「仅本标签页」：带本标签页的令牌，后端优先于 Cookie 采用
+  const tabToken = getTabToken();
+  if (tabToken) headers.Authorization = `Bearer ${tabToken}`;
   let payload: BodyInit | undefined;
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
