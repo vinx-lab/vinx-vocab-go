@@ -17,7 +17,8 @@ status: ready
 ### 1. 学段
 
 - 新增学段：`primary`（小学）、`junior`（初中）、`exam`（中考冲刺）。
-- `Book` 增加一列 `level`（可空）。内置词书：七上～九上为 `junior`，中考核心词汇、中考差集为 `exam`。老师和管理员在词书设置里可以修改。
+- `Book` 增加一列 `level`（可空）。内置词书：七上～九上为 `junior`，中考核心词汇、中考差集为 `exam`。老师和管理员在词书设置里可以修改（`PATCH /books/:id` 增加可选的 `level`，词书视图增加 `level`）。
+- 写入方式：迁移 `0004_book_level.sql` 加列，并按书名回填已有的系统词书；首次启动时由 `internal/seed` 插入内置词书时按书名写入 `level`。书名映射里包含「中考差集」，供从服务器版导入的同名词书使用。
 - 生成时的默认学段：
   - 单元相关的生成（例句、句型、仿写）：用这本词书的 `level`；
   - 学生的短文：取学生目标词书里最高的 `level`；没有目标时用 `junior`。
@@ -94,7 +95,7 @@ status: ready
 | 长度超过学段的单句上限 | 全部 | 标黄 |
 | 结构偏离：变式和原句的结构相似度低于阈值 | 仿写 | 标黄 |
 
-- **结构相似度**：把原句和变式都分词，去掉实词（关联到词库里名词、动词、形容词、副词的词），剩下的虚词序列做最长公共子序列，除以原句虚词数。低于 0.6 就标黄。阈值先这样定，演练后再调。
+- **结构相似度**：把原句和变式都分词，去掉实词（关联到词库里名词、动词、形容词、副词的词），剩下的虚词序列做最长公共子序列，除以原句虚词数。实词指关联到词库、且词性为 n./v./adj./adv. 的词（短语覆盖到的词也算实词），词库外的词一并去掉；be / do / have 的各种形式、人称代词各归为一类后再比较，否则「肯定 → 疑问」这类正常变式会被误判。低于 0.6 就标黄。阈值先这样定，演练后再调。
 - 检查只做提示，不拦截。每一句旁边有「重写这一句」，把这句和标出的问题一起发给 AI，只替换这一句。
 
 ### 5. 流程（沿用 K41）
@@ -107,7 +108,8 @@ status: ready
    - 句型：保存成单元下的一篇 `list`，标题默认「UnitN 重点句型」，或者追加到已有的句型清单里；
    - 仿写：保存成单元下的一篇 `list`，标题默认「UnitN 句型仿写」，每句记录 `originId` 和 `variantNote`；
    - 短文：和现在一样，保存为学生自己的短文，改成逐句存储。
-- 草稿只存在于后台任务的结果里（内存）。任务完成后 30 分钟内可以回到草稿页；超时或服务重启后丢失，页面上要说明。和现有任务的行为一致。
+- **草稿流程只用于句型和仿写**。例句和短文保持现有行为：生成任务完成即写库（例句写词条和例句句子，短文直接保存 AI 按句输出的句子，不再拆分），任务结果里附上每句的检查结果，之后在原有的编辑入口修改。这样不改变现有接口的副作用（ADR 0004）。
+- 句型、仿写的草稿只存在于后台任务的结果里（内存），保留时间与现有任务相同（1 小时，`JobTTL`）；超时或服务重启后丢失，页面上要说明。
 
 ### 6. 四种生成的输入
 
@@ -143,10 +145,12 @@ status: ready
 |---|---|
 | `POST /ai/units/:id/patterns/preview`、`POST /ai/units/:id/patterns` | 句型：预览 / 开始生成，返回任务 id |
 | `POST /ai/variants/preview`、`POST /ai/variants` `{ unitId, sentenceIds? , pasted?, modes[], perItem, vocab: "unit" \| "target" }` | 仿写 |
+| `POST /ai/units/:id/patterns/save` `{ textId? , title?, sentences: [{ en, cn, frame? }] }` | 保存句型草稿：带 `textId` 时追加到已有的句型清单，否则新建一篇 `list`（标题默认「UnitN 重点句型」）。句子 `source = ai`，记录 `model`、`createdById`。权限同生成接口 |
+| `POST /ai/variants/save` `{ unitId, textId?, title?, sentences: [{ en, cn, originId, variantNote, change }] }` | 保存仿写草稿：同上，标题默认「UnitN 句型仿写」，句子 `source = variant`，记录 `originId`、`variantNote` |
 | `POST /ai/sentences/rewrite` `{ en, cn, issues[], level, kind }` | 重写一句（同步调用，超时 60 秒） |
 | `GET /ai/jobs/:id` | 现有接口；结果里增加每句的检查结果 |
 | `GET/PUT /settings/ai/prompts` | 现有接口，从 2 项扩展到 4 项（`example`、`passage`、`pattern`、`variant`） |
-| 现有的例句、短文生成接口 | 预览请求增加可选的 `level` |
+| 现有的例句、短文生成接口 | 预览和生成请求都增加可选的 `level`（生成后检查「单句上限」要用） |
 
 ### 8. 权限
 
