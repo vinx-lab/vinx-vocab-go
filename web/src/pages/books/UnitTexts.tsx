@@ -7,7 +7,8 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useMutation, useQueryClient } from "@/lib/query";
 import { Alert, Button, Checkbox, Empty, Input, Modal, Popconfirm, Space, Tag, Tooltip, useApp } from "@/ui";
-import { DownOutlined, UpOutlined, DeleteOutlined, EditOutlined, HolderOutlined, ImportOutlined, PlusOutlined } from "@/ui";
+import { DownOutlined, UpOutlined, DeleteOutlined, EditOutlined, HolderOutlined, ImportOutlined, PlusOutlined, ThunderboltOutlined } from "@/ui";
+import { AiPatternsModal, AiVariantsModal } from "./AiDraftModals";
 import { api, errorMessage } from "@/lib/api";
 import { DEFAULT_TITLE, KIND_LABEL, editRowsFromSentences, editRowsToInputs, mergeKindOrder, moveItem, previewTextsPayload, type EditPreviewText, type EditRow } from "@/lib/sentences";
 import type { Sentence, SentenceAnalysis, TextKind, TextsPreview, UnitText } from "@/types";
@@ -17,12 +18,17 @@ import { ScopeHints, TEXTS_SAMPLE, TextsPreviewList, toEditTexts } from "./Texts
 
 const NEW_LABEL: Record<TextKind, string> = { list: "新建句型清单", text: "新建课文" };
 
-export function UnitTextsPanel({ unitId, kind, editable, texts }: { unitId: string; kind: TextKind; editable: boolean; texts: UnitText[] }) {
+export function UnitTextsPanel({ unitId, kind, editable, ai = false, texts }: { unitId: string; kind: TextKind; editable: boolean; ai?: boolean; texts: UnitText[] }) {
   const { message } = useApp();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<UnitText | "new" | null>(null);
   const [importing, setImporting] = useState(false);
+  // spec 0005：AI 生成句型、仿写（可以先在句型清单里勾选句子）
+  const [aiDialog, setAiDialog] = useState<"patterns" | "variants" | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
   const mine = texts.filter((t) => t.kind === kind);
+  const aiTools = editable && ai && kind === "list";
+  const togglePick = (id: string, on: boolean) => setPicked((prev) => (on ? [...prev, id] : prev.filter((x) => x !== id)));
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["books", "unitTexts", unitId] });
 
@@ -63,6 +69,18 @@ export function UnitTextsPanel({ unitId, kind, editable, texts }: { unitId: stri
           <Button icon={<ImportOutlined />} onClick={() => setImporting(true)}>
             粘贴导入{KIND_LABEL[kind]}
           </Button>
+          {aiTools && (
+            <>
+              <Button icon={<ThunderboltOutlined />} onClick={() => setAiDialog("patterns")}>
+                AI 生成
+              </Button>
+              <Tooltip title="照着例句做仿写和变式练习；可以先勾选下面的句子">
+                <Button icon={<ThunderboltOutlined />} onClick={() => setAiDialog("variants")}>
+                  仿写{picked.length ? `（${picked.length}）` : ""}
+                </Button>
+              </Tooltip>
+            </>
+          )}
         </Space>
       )}
       {mine.length === 0 ? (
@@ -94,24 +112,40 @@ export function UnitTextsPanel({ unitId, kind, editable, texts }: { unitId: stri
                 </Space>
               )}
             </div>
-            {t.kind === "list" ? <PatternList sentences={t.sentences} /> : <TextReader sentences={t.sentences} />}
+            {t.kind === "list" ? <PatternList sentences={t.sentences} picked={aiTools ? picked : undefined} onPick={togglePick} /> : <TextReader sentences={t.sentences} />}
           </section>
         ))
       )}
       {editing && <TextEditorModal unitId={unitId} kind={kind} text={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={refresh} />}
       {importing && <PasteImportModal unitId={unitId} kind={kind} onClose={() => setImporting(false)} onDone={refresh} />}
+      {aiDialog === "patterns" && <AiPatternsModal unitId={unitId} texts={texts} onClose={() => setAiDialog(null)} onSaved={refresh} />}
+      {aiDialog === "variants" && (
+        <AiVariantsModal
+          unitId={unitId}
+          texts={texts}
+          initialSentenceIds={picked}
+          onClose={() => setAiDialog(null)}
+          onSaved={() => {
+            setPicked([]);
+            refresh();
+          }}
+        />
+      )}
     </div>
   );
 }
 
-/** 句型清单：一条一条显示，中文常显；点一条看逐词释义 */
-function PatternList({ sentences }: { sentences: Sentence[] }) {
+/** 句型清单：一条一条显示，中文常显；点一条看逐词释义。picked 不为空时每条前面可以勾选（拿去仿写） */
+function PatternList({ sentences, picked, onPick }: { sentences: Sentence[]; picked?: string[]; onPick?: (id: string, on: boolean) => void }) {
   const [open, setOpen] = useState<string | null>(null);
   if (sentences.length === 0) return <div style={{ color: "var(--muted)" }}>还没有句子</div>;
   return (
     <ol style={{ margin: 0, paddingLeft: 22 }}>
       {sentences.map((s) => (
         <li key={s.id} style={{ padding: "6px 0" }}>
+          {picked && (
+            <Checkbox style={{ float: "right", marginLeft: 8 }} checked={picked.includes(s.id)} onChange={(e) => onPick?.(s.id, e.target.checked)} aria-label={`勾选仿写 ${s.en}`} />
+          )}
           <div role="button" tabIndex={0} style={{ cursor: "pointer" }} onClick={() => setOpen((o) => (o === s.id ? null : s.id))} onKeyDown={(e) => e.key === "Enter" && setOpen((o) => (o === s.id ? null : s.id))}>
             {s.frame && (
               <div style={{ fontSize: 13, color: "var(--accent)", fontFamily: "var(--serif-en)" }}>

@@ -15,6 +15,7 @@ import {
   Modal,
   Pagination,
   Popconfirm,
+  Radio,
   Row,
   Segmented,
   Select,
@@ -33,7 +34,20 @@ import {
   SoundOutlined,
   ThunderboltOutlined,
 } from "@/ui";
-import { AI_PROMPT_MAX_LENGTH, type AiExamplesJobResult, type AiJobStarted, type AiPreview, type AiPreviewWord } from "@vinx/shared";
+import {
+  AI_LEVELS,
+  AI_LEVEL_HINT,
+  AI_LEVEL_LABEL,
+  AI_PROMPT_MAX_LENGTH,
+  isAiLevel,
+  type AiExamplesJobResult,
+  type AiJobStarted,
+  type AiLevel,
+  type AiPreview,
+  type AiPreviewWord,
+} from "@vinx/shared";
+import { AiChecks, countFlagged } from "@/components/AiChecks";
+import { LevelField } from "./AiDraftModals";
 import { api, errorMessage } from "@/lib/api";
 import { can } from "@/lib/perms";
 import type { BookDetail, Paged, TextKind, UnitText, UnitWord, UnitWordsData } from "@/types";
@@ -246,6 +260,11 @@ export function BookDetailPage() {
         <Tag color={book.isSystem ? "cyan" : "volcano"} bordered={false}>
           {book.isSystem ? "系统词书" : `${book.ownerName ?? ""} 的词书`}
         </Tag>
+        {isAiLevel(book.level) && (
+          <Tag bordered={false} data-testid="book-level-tag">
+            {AI_LEVEL_LABEL[book.level]}
+          </Tag>
+        )}
         {book.units.length} 单元 · {totalWords} 词{book.description ? ` · ${book.description}` : ""}
       </PageHeader>
 
@@ -441,7 +460,7 @@ export function BookDetailPage() {
                 ) : textsQuery.error || !textsQuery.data || !activeUnit ? (
                   <ErrorBlock error={textsQuery.error ?? new Error("加载失败")} onRetry={() => textsQuery.refetch()} />
                 ) : (
-                  <UnitTextsPanel key={`${activeUnit.id}-${tab}`} unitId={activeUnit.id} kind={tab} editable={editable} texts={textsQuery.data.items} />
+                  <UnitTextsPanel key={`${activeUnit.id}-${tab}`} unitId={activeUnit.id} kind={tab} editable={editable} ai={ai} texts={textsQuery.data.items} />
                 )
               ) : wordsQuery.isLoading ? (
                 <div style={{ padding: 40, textAlign: "center" }}>
@@ -616,16 +635,21 @@ function AiExamplesModal({ target, onClose }: { target: AiExamplesTarget; onClos
   const [loadError, setLoadError] = useState<string | null>(null);
   const job = useAiJob<AiExamplesJobResult>();
   const seq = useRef(0);
+  /** spec 0005：临时改的学段（只对这一次有效）；没改时用预览返回的（词书的学段） */
+  const [levelOverride, setLevelOverride] = useState<AiLevel | undefined>(undefined);
+  const [previewLevel, setPreviewLevel] = useState<AiLevel | undefined>(undefined);
+  const level = levelOverride ?? previewLevel;
 
   /** 取预览；wordIds 为空表示按缺例句重新挑一批。手改过的提示词先确认再覆盖 */
-  const load = async (wordIds?: string[], keepEdits = false) => {
+  const load = async (wordIds?: string[], keepEdits = false, lv: AiLevel | undefined = levelOverride) => {
     const my = ++seq.current;
     setLoading(true);
     try {
-      const r = await api.post<AiPreview & { remaining?: number }>(`${base}/preview`, wordIds ? { wordIds } : {});
+      const r = await api.post<AiPreview & { remaining?: number }>(`${base}/preview`, { ...(wordIds ? { wordIds } : {}), ...(lv ? { level: lv } : {}) });
       if (my !== seq.current) return;
       setLoadError(null);
       setWords(r.words);
+      if (isAiLevel(r.level)) setPreviewLevel(r.level);
       if (r.remaining !== undefined) setRemaining(r.remaining);
       if (keepEdits && prompt !== basePrompt && prompt !== r.prompt) {
         modal.confirm({
@@ -658,9 +682,14 @@ function AiExamplesModal({ target, onClose }: { target: AiExamplesTarget; onClos
 
   const generate = () =>
     job.start(
-      () => api.post<AiJobStarted>(base, { wordIds: words.map((w) => w.id), prompt }),
+      () => api.post<AiJobStarted>(base, { wordIds: words.map((w) => w.id), prompt, ...(level ? { level } : {}) }),
       () => void queryClient.invalidateQueries({ queryKey: ["books"] }),
     );
+
+  const changeLevel = (lv: AiLevel) => {
+    setLevelOverride(lv);
+    void load(target.kind === "unit" ? words.map((w) => w.id) : undefined, true, lv);
+  };
 
   const nextBatch = () => {
     job.reset();
@@ -698,6 +727,7 @@ function AiExamplesModal({ target, onClose }: { target: AiExamplesTarget; onClos
             description={
               <>
                 {done.failed.length > 0 && <div>没有生成合格例句：{done.failed.join("、")}</div>}
+                {countFlagged(done.items) > 0 && <div>{countFlagged(done.items)} 条带标记（超纲或太长），可以在词条里修改</div>}
                 {target.kind === "unit" && <div>本单元还有 {done.remaining ?? 0} 个词缺例句</div>}
               </>
             }
@@ -712,6 +742,7 @@ function AiExamplesModal({ target, onClose }: { target: AiExamplesTarget; onClos
                 <div className="vx-example-cn is-compact" style={{ color: "var(--muted)" }}>
                   {it.exampleCn}
                 </div>
+                <AiChecks checks={it.checks} />
               </div>
             ))}
           </div>
@@ -725,6 +756,7 @@ function AiExamplesModal({ target, onClose }: { target: AiExamplesTarget; onClos
               本单元有 {remaining} 个词缺例句，每次最多补 20 个。
             </div>
           )}
+          <LevelField value={level} onChange={changeLevel} disabled={job.running || loading} />
           <AiPromptPreview
             words={words}
             onRemoveWord={target.kind === "unit" && !job.running ? (id) => void load(words.filter((w) => w.id !== id).map((w) => w.id), true) : undefined}
@@ -743,12 +775,14 @@ function AiExamplesModal({ target, onClose }: { target: AiExamplesTarget; onClos
   );
 }
 
-function BookInfoModal({ book, onClose }: { book: BookDetail; onClose: () => void }) {
+/** 编辑词书：名称、描述、学段（spec 0005：决定 AI 生成例句、句型、仿写的默认难度） */
+export function BookInfoModal({ book, onClose }: { book: BookDetail; onClose: () => void }) {
   const [form] = Form.useForm<NameForm>();
   const { message } = useApp();
   const queryClient = useQueryClient();
+  const [level, setLevel] = useState<string>(isAiLevel(book.level) ? book.level : "");
   const save = useMutation({
-    mutationFn: (v: NameForm) => api.patch(`/books/${book.id}`, { name: v.name, description: v.description || null }),
+    mutationFn: (v: NameForm) => api.patch(`/books/${book.id}`, { name: v.name, description: v.description || null, level: level || null }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["books"] });
       message.success("已保存");
@@ -766,6 +800,18 @@ function BookInfoModal({ book, onClose }: { book: BookDetail; onClose: () => voi
           <Input.TextArea rows={3} maxLength={300} showCount />
         </Form.Item>
       </Form>
+      <div data-testid="book-level">
+        <div style={{ marginBottom: 8 }}>学段</div>
+        <Radio.Group
+          optionType="button"
+          value={level}
+          onChange={(e) => setLevel(String(e.target.value))}
+          options={[{ value: "", label: "不设置" }, ...AI_LEVELS.map((l) => ({ value: l, label: AI_LEVEL_LABEL[l] }))]}
+        />
+        <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 6, lineHeight: 1.7 }}>
+          {isAiLevel(level) ? AI_LEVEL_HINT[level] : "不设置时按初中"}。AI 给这本书生成例句、句型和仿写时默认用这个学段，生成前还可以临时改。
+        </div>
+      </div>
     </Modal>
   );
 }

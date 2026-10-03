@@ -59,15 +59,28 @@ export interface AiTestResult {
 // AI 提示词默认要求模板（K41，部分取代 K40）
 // ------------------------------------------------------------------
 
-/** 可编辑的默认要求模板：例句 / 短文 */
-export type AiPromptKey = "example" | "passage";
+/** 可编辑的默认要求模板：例句 / 短文 / 句型 / 仿写（spec 0005 从 2 项扩展到 4 项） */
+export type AiPromptKey = "example" | "passage" | "pattern" | "variant";
 
-export const AI_PROMPT_KEYS: AiPromptKey[] = ["example", "passage"];
+export const AI_PROMPT_KEYS: AiPromptKey[] = ["example", "passage", "pattern", "variant"];
 
 export const AI_PROMPT_LABEL: Record<AiPromptKey, string> = {
   example: "例句",
   passage: "短文",
+  pattern: "句型",
+  variant: "仿写",
 };
+
+/** 生成时在要求模板后面接上的内容（设置页说明用） */
+export const AI_PROMPT_APPENDIX: Record<AiPromptKey, string> = {
+  example: "这次的单词列表",
+  passage: "这次的单词列表和主题",
+  pattern: "单元名、话题、生成数量、本单元的单词和已有的句型",
+  variant: "改造方式、每句几个变式、例句和替换用的词汇",
+};
+
+/** 模板里可以用的占位符（spec 0005 §2），生成时按学段替换成具体值 */
+export const AI_PROMPT_PLACEHOLDERS = ["{学段}", "{句长}", "{短文长度}", "{单句上限}"];
 
 /** 模板、以及生成前页面上可见提示词的最大长度（去掉首尾空白后） */
 export const AI_PROMPT_MAX_LENGTH = 6000;

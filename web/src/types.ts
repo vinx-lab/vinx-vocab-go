@@ -281,6 +281,8 @@ export interface Book {
   wordCount: number;
   canEdit: boolean;
   createdAt: string;
+  /** 学段（spec 0005）：primary | junior | exam，未设置为 null */
+  level?: string | null;
 }
 
 export interface BookDetail {
@@ -290,6 +292,8 @@ export interface BookDetail {
   isSystem: boolean;
   ownerName: string | null;
   canEdit: boolean;
+  /** 学段（spec 0005）：primary | junior | exam，未设置为 null */
+  level?: string | null;
   units: { id: string; name: string; sortOrder: number; wordCount: number }[];
 }
 

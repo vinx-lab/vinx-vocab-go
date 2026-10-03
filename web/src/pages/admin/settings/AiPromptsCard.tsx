@@ -2,9 +2,14 @@ import { useEffect, useState } from "preact/hooks";
 import { Alert, Button, Collapse, Input, Popconfirm, RollbackOutlined, SaveOutlined, Space, Tabs, Tag, useApp } from "@/ui";
 import { useMutation, useQuery, useQueryClient } from "@/lib/query";
 import {
+  AI_LEVELS,
+  AI_LEVEL_HINT,
+  AI_LEVEL_LABEL,
+  AI_PROMPT_APPENDIX,
   AI_PROMPT_KEYS,
   AI_PROMPT_LABEL,
   AI_PROMPT_MAX_LENGTH,
+  AI_PROMPT_PLACEHOLDERS,
   type AiPromptItem,
   type AiPromptKey,
   type AiPromptsView,
@@ -69,7 +74,7 @@ function PromptEditor({ item }: { item: AiPromptItem }) {
       />
 
       <div style={{ color: "var(--muted)", fontSize: 12, margin: "10px 0 12px", lineHeight: 1.7 }}>
-        输出格式由系统自动加上，这里只写要求。生成时会在后面接上这次的单词列表{item.key === "passage" ? "和主题" : ""}。
+        输出格式由系统自动加上，这里只写要求。生成时会在后面接上{AI_PROMPT_APPENDIX[item.key]}。
       </div>
 
       {error && (
@@ -135,8 +140,8 @@ function PromptEditor({ item }: { item: AiPromptItem }) {
 }
 
 /**
- * 系统设置 → AI 提示词（K41）：只编辑例句、短文两段默认要求模板。
- * 输出格式由系统自动加上，不在这里显示、也不检查；生成的人在生成前还可以按次修改。
+ * 系统设置 → AI 提示词（K41，spec 0005）：编辑例句、短文、句型、仿写四段默认要求模板。
+ * 模板里可以用学段占位符；输出格式由系统自动加上，不在这里显示、也不检查；生成的人在生成前还可以按次修改。
  */
 export function AiPromptsCard() {
   const query = useQuery({ queryKey: QUERY_KEY, queryFn: () => api.get<AiPromptsView>("/settings/ai/prompts") });
@@ -148,8 +153,22 @@ export function AiPromptsCard() {
         AI 提示词
       </h2>
       <div style={{ color: "var(--muted)", fontSize: 13, marginBottom: 8 }}>
-        AI 生成例句和巩固短文时的默认要求（风格、长度、难度等）。保存后，生成前预览里的提示词立即按新模板拼出；
+        AI 生成例句、巩固短文、单元句型和仿写练习时的默认要求（风格、长度、难度等）。保存后，生成前预览里的提示词立即按新模板拼出；
         生成的人还可以针对某一次再改。输出格式由系统自动加上。
+      </div>
+      <div data-testid="prompt-placeholders" style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.8, marginBottom: 8 }}>
+        模板里可以用占位符{" "}
+        {AI_PROMPT_PLACEHOLDERS.map((p) => (
+          <code key={p} style={{ marginRight: 6 }}>
+            {p}
+          </code>
+        ))}
+        ，生成时按学段换成具体值：
+        {AI_LEVELS.map((l) => (
+          <div key={l}>
+            {AI_LEVEL_LABEL[l]}：{AI_LEVEL_HINT[l]}
+          </div>
+        ))}
       </div>
       {query.isLoading ? (
         <Loading />

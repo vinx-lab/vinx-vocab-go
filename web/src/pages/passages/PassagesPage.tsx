@@ -11,7 +11,36 @@ import { useAiJob } from "@/lib/useAiJob";
 import { AiJobProgress, AiPromptPreview } from "@/components/AiPromptPreview";
 import { EmptyBlock, ErrorBlock, Loading, PageHeader } from "@/components/ui";
 import type { MemoryWord, Paged, PassageListItem } from "@/types";
-import { AI_PROMPT_MAX_LENGTH, type AiJobStarted, type AiPassageJobResult, type AiPreview, type AiPreviewWord, type User } from "@vinx/shared";
+import { AI_PROMPT_MAX_LENGTH, isAiLevel, type AiJobStarted, type AiLevel, type AiPassageJobResult, type AiPreview, type AiPreviewWord, type User } from "@vinx/shared";
+import { AiChecks, countFlagged } from "@/components/AiChecks";
+import { LevelField } from "@/pages/books/AiDraftModals";
+
+/** 生成结果里带检查标记的句子（spec 0005 §4）：只做提示，短文已经保存 */
+export function PassageChecks({ result, onOpen }: { result: AiPassageJobResult; onOpen: () => void }) {
+  const list = (result.sentences ?? []).filter((s) => s.checks.error || s.checks.warning);
+  return (
+    <Alert
+      data-testid="passage-checks"
+      type="warning"
+      showIcon
+      style={{ marginTop: 12, textAlign: "left" }}
+      message={`「${result.title}」已保存，${list.length} 句带标记`}
+      description={
+        <div>
+          {list.map((s, i) => (
+            <div key={i} style={{ padding: "6px 0", borderTop: i ? "1px dashed var(--line)" : undefined }}>
+              <div className="vx-word">{s.en}</div>
+              <AiChecks checks={s.checks} />
+            </div>
+          ))}
+          <Button type="primary" size="small" style={{ marginTop: 8 }} onClick={onOpen}>
+            阅读这篇
+          </Button>
+        </div>
+      }
+    />
+  );
+}
 
 type Source = "due" | "difficult" | "recent" | "manual";
 
@@ -60,6 +89,12 @@ export function PassagesPage() {
   const seq = useRef(0);
   const lastPick = useRef<string | null>(null);
   const job = useAiJob<AiPassageJobResult>();
+  // spec 0005：学段默认按目标词书推断（预览返回），可以临时改，只对这一次有效
+  const [levelOverride, setLevelOverride] = useState<AiLevel | undefined>(undefined);
+  const [previewLevel, setPreviewLevel] = useState<AiLevel | undefined>(undefined);
+  const level = levelOverride ?? previewLevel;
+  /** 生成完、有句子带检查标记时先留在这里看结果 */
+  const [flagged, setFlagged] = useState<AiPassageJobResult | null>(null);
 
   const pickKey = JSON.stringify({ source, count, manualIds: source === "manual" ? manualIds : [] });
   const shown = useMemo(() => picked.filter((w) => !excluded.includes(w.id)), [picked, excluded]);
@@ -98,12 +133,14 @@ export function PassagesPage() {
       }
       setPreviewing(true);
       try {
+        const lv = levelOverride ? { level: levelOverride } : {};
         const body = repick
-          ? { source, count, topic: topic.trim() || undefined, ...(source === "manual" ? { wordIds: manualIds } : {}) }
-          : { source, count, topic: topic.trim() || undefined, wordIds: shown.map((w) => w.id) };
+          ? { source, count, topic: topic.trim() || undefined, ...lv, ...(source === "manual" ? { wordIds: manualIds } : {}) }
+          : { source, count, topic: topic.trim() || undefined, ...lv, wordIds: shown.map((w) => w.id) };
         const r = await api.post<AiPreview>("/ai/passages/preview", body);
         if (my !== seq.current) return;
         setPreviewError(null);
+        if (isAiLevel(r.level)) setPreviewLevel(r.level);
         if (repick) {
           lastPick.current = pickKey;
           setPicked(r.words);
@@ -119,15 +156,16 @@ export function PassagesPage() {
     return () => clearTimeout(timer);
     // shown 由 picked / excluded 决定，已在依赖里
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ai, pickKey, topic, excluded]);
+  }, [ai, pickKey, topic, excluded, levelOverride]);
 
   const removeWord = (id: string) => {
     if (source === "manual") setManualIds((ids) => ids.filter((x) => x !== id));
     else setExcluded((xs) => [...xs, id]);
   };
 
-  const generate = () =>
-    job.start(
+  const generate = () => {
+    setFlagged(null);
+    return job.start(
       () =>
         api.post<AiJobStarted>("/passages/generate", {
           source,
@@ -135,13 +173,17 @@ export function PassagesPage() {
           topic: topic.trim() || undefined,
           wordIds: shown.map((w) => w.id),
           prompt,
+          ...(level ? { level } : {}),
         }),
       (r) => {
         qc.invalidateQueries({ queryKey: ["passages"] });
         message.success(r.missingWords.length ? `短文已生成（没用上：${r.missingWords.join("、")}）` : "短文已生成");
-        navigate(`/passages/${r.id}`);
+        // 有句子带检查标记（超纲、太长）时先在这里列出，再去阅读；没有标记直接打开
+        if (countFlagged(r.sentences ?? []) > 0) setFlagged(r);
+        else navigate(`/passages/${r.id}`);
       },
     );
+  };
 
   const options = useMemo(
     () => (words.data?.items ?? []).map((w) => ({ value: w.wordId, label: `${w.spelling} — ${w.definition}` })),
@@ -216,6 +258,7 @@ export function PassagesPage() {
           />
 
           <div style={{ marginTop: 16 }}>
+            <LevelField value={level} onChange={setLevelOverride} disabled={job.running} />
             <AiPromptPreview
               words={shown}
               onRemoveWord={job.running ? undefined : removeWord}
@@ -245,6 +288,7 @@ export function PassagesPage() {
             {job.running ? "生成中…" : "生成短文"}
           </Button>
           <AiJobProgress state={job.state} />
+          {flagged && <PassageChecks result={flagged} onOpen={() => navigate(`/passages/${flagged.id}`)} />}
           {job.running && (
             <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 6, textAlign: "center" }}>
               模型 {status?.model} 正在写作。可以先离开，生成完会保存在「我的短文」里
