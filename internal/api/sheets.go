@@ -75,20 +75,173 @@ func validateSheetSource(v *httpx.V, path string, o httpx.Opt[sheetSourceBody]) 
 	}
 }
 
+// ===== 默写单（spec 0006）=====
+
+// sentenceSourceBody 默写单的句子来源：{ kind: "text", textId } | { kind: "learning" } | { kind: "passage", passageId } | { kind: "session", sessionId }。
+type sentenceSourceBody struct {
+	Kind      httpx.Opt[string] `json:"kind"`
+	TextID    httpx.Opt[string] `json:"textId"`
+	PassageID httpx.Opt[string] `json:"passageId"`
+	SessionID httpx.Opt[string] `json:"sessionId"`
+}
+
+// sentenceSourcesMax 一次最多选的句子来源。
+const sentenceSourcesMax = 50
+
+func validateSentenceSources(v *httpx.V, path string, o httpx.Opt[[]sentenceSourceBody]) []service.SentenceSource {
+	if !o.Set || v.Has(path) {
+		return nil
+	}
+	if o.Null {
+		v.Add(path, "Expected array, received null")
+		return nil
+	}
+	v.ArrayLen(path, len(o.Val), -1, sentenceSourcesMax, "", "")
+	out := make([]service.SentenceSource, 0, len(o.Val))
+	for i, s := range o.Val {
+		p := fmt.Sprintf("%s.%d", path, i)
+		src := service.SentenceSource{Kind: v.Enum(p+".kind", s.Kind, service.SentenceSourceKinds, "")}
+		switch src.Kind {
+		case service.SentenceSourceText:
+			src.TextID = v.Str(p+".textId", s.TextID, httpx.Min(1))
+		case service.SentenceSourcePassage:
+			src.PassageID = v.Str(p+".passageId", s.PassageID, httpx.Min(1))
+		case service.SentenceSourceSession:
+			src.SessionID = v.Str(p+".sessionId", s.SessionID, httpx.Min(1))
+		}
+		out = append(out, src)
+	}
+	return out
+}
+
+// dictLimits 每份各题型的数量上限 wordCount / phraseCount / sentenceCount（默认 单词 20、短语 10、句子 8）。
+func dictLimits(v *httpx.V, words, phrases, sentences httpx.Opt[float64]) core.DictationLimits {
+	w, p, s := core.DictationWordDefault, core.DictationPhraseDefault, core.DictationSentenceDefault
+	return core.DictationLimits{
+		Words:     v.Int("wordCount", words, &w, httpx.Between(0, core.DictationWordMax)),
+		Phrases:   v.Int("phraseCount", phrases, &p, httpx.Between(0, core.DictationPhraseMax)),
+		Sentences: v.Int("sentenceCount", sentences, &s, httpx.Between(0, core.DictationSentenceMax)),
+	}
+}
+
+// dictItemBody 默写单的一道题。
+type dictItemBody struct {
+	Type       httpx.Opt[string] `json:"type"`
+	WordID     httpx.Opt[string] `json:"wordId"`
+	SentenceID httpx.Opt[string] `json:"sentenceId"`
+}
+
+// dictItemsMax 一次生成的题目上限 = 份数 × 各题型每份上限之和。
+const dictItemsMax = core.SheetCopiesMax * (core.DictationWordMax + core.DictationPhraseMax + core.DictationSentenceMax)
+
+func validateDictItems(v *httpx.V, path string, o httpx.Opt[[]dictItemBody]) []core.DictationItem {
+	if v.Has(path) {
+		return nil
+	}
+	if !o.Set {
+		v.Add(path, "Required")
+		return nil
+	}
+	if o.Null {
+		v.Add(path, "Expected array, received null")
+		return nil
+	}
+	v.ArrayLen(path, len(o.Val), 1, dictItemsMax, "至少选一道题", "")
+	out := make([]core.DictationItem, 0, len(o.Val))
+	for i, it := range o.Val {
+		p := fmt.Sprintf("%s.%d", path, i)
+		item := core.DictationItem{Type: v.Enum(p+".type", it.Type, core.DictationItemTypes, "")}
+		switch {
+		case item.Type == "":
+		case core.IsSentenceItem(item.Type):
+			item.SentenceID = v.Str(p+".sentenceId", it.SentenceID, httpx.Min(1))
+		default:
+			item.WordID = v.Str(p+".wordId", it.WordID, httpx.Min(1))
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+// gradeItemBody 一道题的批改结果。
+type gradeItemBody struct {
+	Index      httpx.Opt[float64] `json:"index"`
+	Correct    httpx.Opt[bool]    `json:"correct"`
+	UserAnswer httpx.Opt[string]  `json:"userAnswer"`
+}
+
+// sheetGradeBody POST /sheets/:id/grade { results: [{ index, correct, userAnswer? }] }。
+type sheetGradeBody struct {
+	Results httpx.Opt[[]gradeItemBody] `json:"results"`
+
+	results []core.GradeResult
+}
+
+func (b *sheetGradeBody) Validate(v *httpx.V) {
+	if v.Has("results") {
+		return
+	}
+	if !b.Results.Set {
+		v.Add("results", "Required")
+		return
+	}
+	if b.Results.Null {
+		v.Add("results", "Expected array, received null")
+		return
+	}
+	v.ArrayLen("results", len(b.Results.Val), 1, dictItemsMax, "", "")
+	for i, r := range b.Results.Val {
+		p := fmt.Sprintf("results.%d", i)
+		g := core.GradeResult{Index: v.Int(p+".index", r.Index, nil, httpx.Between(0, dictItemsMax))}
+		switch {
+		case v.Has(p + ".correct"):
+		case !r.Correct.Set:
+			v.Add(p+".correct", "Required")
+		case r.Correct.Null:
+			v.Add(p+".correct", "Expected boolean, received null")
+		default:
+			g.Correct = r.Correct.Val
+		}
+		if ua := v.NullStr(p+".userAnswer", r.UserAnswer, httpx.Max(500)); ua.Set && !ua.Null {
+			s := ua.Val
+			g.UserAnswer = &s
+		}
+		b.results = append(b.results, g)
+	}
+}
+
 // sheetPreviewBody POST /sheets/preview。
 type sheetPreviewBody struct {
 	UserID  httpx.Opt[string]          `json:"userId"`
 	Count   httpx.Opt[float64]         `json:"count"`
 	Include httpx.Opt[[]string]        `json:"include"`
 	Source  httpx.Opt[sheetSourceBody] `json:"source"`
+	// 默写单（spec 0006）
+	Format          httpx.Opt[string]               `json:"format"`
+	Copies          httpx.Opt[float64]              `json:"copies"`
+	IncludeWords    httpx.Opt[bool]                 `json:"includeWords"`
+	IncludePhrases  httpx.Opt[bool]                 `json:"includePhrases"`
+	SentenceSources httpx.Opt[[]sentenceSourceBody] `json:"sentenceSources"`
+	WordCount       httpx.Opt[float64]              `json:"wordCount"`
+	PhraseCount     httpx.Opt[float64]              `json:"phraseCount"`
+	SentenceCount   httpx.Opt[float64]              `json:"sentenceCount"`
 
 	userID  string
 	count   int
 	include []string
 	source  *service.SheetSource
+	format  string
+	dict    service.DictationPreviewInput
 }
 
 func (b *sheetPreviewBody) Validate(v *httpx.V) {
+	b.format = v.OptEnum("format", b.Format, core.SheetFormats, "", core.SheetFormatSelftest)
+	one := 1
+	b.dict.Copies = v.Int("copies", b.Copies, &one, httpx.Between(1, core.SheetCopiesMax))
+	b.dict.Limits = dictLimits(v, b.WordCount, b.PhraseCount, b.SentenceCount)
+	b.dict.IncludeWords = v.OptBool("includeWords", b.IncludeWords, true)
+	b.dict.IncludePhrases = v.OptBool("includePhrases", b.IncludePhrases, true)
+	b.dict.SentenceSources = validateSentenceSources(v, "sentenceSources", b.SentenceSources)
 	if s := v.OptStr("userId", b.UserID); s != nil {
 		b.userID = *s
 	}
@@ -113,16 +266,33 @@ type sheetCreateBody struct {
 	Modes    httpx.Opt[[]string] `json:"modes"`
 	Copies   httpx.Opt[float64]  `json:"copies"`
 	PerSheet httpx.Opt[float64]  `json:"perSheet"`
+	// 默写单（spec 0006）：format = dictation 时用 items 与各题型每份上限，不用 wordIds / modes / perSheet。
+	Format        httpx.Opt[string]         `json:"format"`
+	Items         httpx.Opt[[]dictItemBody] `json:"items"`
+	WordCount     httpx.Opt[float64]        `json:"wordCount"`
+	PhraseCount   httpx.Opt[float64]        `json:"phraseCount"`
+	SentenceCount httpx.Opt[float64]        `json:"sentenceCount"`
 
 	userID           string
 	wordIDs          []string
 	modes            []string
 	copies, perSheet int
+	format           string
+	items            []core.DictationItem
+	limits           core.DictationLimits
 }
 
 func (b *sheetCreateBody) Validate(v *httpx.V) {
 	if s := v.OptStr("userId", b.UserID); s != nil {
 		b.userID = *s
+	}
+	b.format = v.OptEnum("format", b.Format, core.SheetFormats, "", core.SheetFormatSelftest)
+	if b.format == core.SheetFormatDictation {
+		b.items = validateDictItems(v, "items", b.Items)
+		b.limits = dictLimits(v, b.WordCount, b.PhraseCount, b.SentenceCount)
+		one := 1
+		b.copies = v.Int("copies", b.Copies, &one, httpx.Between(1, core.SheetCopiesMax))
+		return
 	}
 	if !b.WordIDs.Set {
 		v.Add("wordIds", "Required")
@@ -154,6 +324,19 @@ type sheetsListQuery struct {
 
 func (q *sheetsListQuery) Validate(v *httpx.V) {
 	q.page, q.limit = pageLimit(v, q.Page, q.Limit)
+}
+
+// sheetSourcesQuery GET /sheets/sources 的 unitId（默写单选句子来源时列出该单元的篇）。
+type sheetSourcesQuery struct {
+	UnitID httpx.Opt[string] `json:"unitId"`
+
+	unitID string
+}
+
+func (q *sheetSourcesQuery) Validate(v *httpx.V) {
+	if s := v.OptStr("unitId", q.UnitID); s != nil {
+		q.unitID = *s
+	}
 }
 
 // ===== 权限 =====
@@ -234,6 +417,20 @@ func registerSheets(r *Router, d *Deps) {
 			// 目标词书按目标学生确定（范围已由 targetBodyUser 判定），版本按本次请求
 			body.source.UseClasses = service.TargetUsesClasses(actor)
 		}
+		if body.format == core.SheetFormatDictation {
+			for _, src := range body.dict.SentenceSources {
+				if err := service.AssertSentenceSource(ctx, d.DB, actor, userID, src); err != nil {
+					return err
+				}
+			}
+			body.dict.Include, body.dict.Source = body.include, body.source
+			out, err := service.PreviewDictation(ctx, d.DB, d.Cfg.Location, d.Now(), userID, body.dict)
+			if err != nil {
+				return err
+			}
+			httpx.OK(w, out)
+			return nil
+		}
 		out, err := service.PreviewSheet(ctx, d.DB, d.Cfg.Location, d.Now(), userID, body.count, body.include, body.source)
 		if err != nil {
 			return err
@@ -243,13 +440,34 @@ func registerSheets(r *Router, d *Deps) {
 	}, study)
 
 	r.Get("/sheets/sources", func(w http.ResponseWriter, req *http.Request) error {
+		ctx := req.Context()
 		userID, err := targetUser(req, d)
 		if err != nil {
 			return err
 		}
-		out, err := service.SheetSources(req.Context(), d.DB, d.Now(), userID)
+		q, err := httpx.DecodeQuery[sheetSourcesQuery](req)
 		if err != nil {
 			return err
+		}
+		out, err := service.SheetSources(ctx, d.DB, d.Now(), userID)
+		if err != nil {
+			return err
+		}
+		// 默写单的句子来源（spec 0006）：要学的句子数量；带 unitId 时列出该单元的篇
+		learning, err := service.LearningSentenceIDs(ctx, d.DB, userID)
+		if err != nil {
+			return err
+		}
+		out.LearningSentences = len(learning)
+		if q.unitID != "" {
+			if err := assertSheetSource(ctx, d, auth.ActorFrom(ctx), userID, &service.SheetSource{Kind: "unit", UnitID: q.unitID}); err != nil {
+				return err
+			}
+			texts, err := service.UnitSourceTexts(ctx, d.DB, q.unitID)
+			if err != nil {
+				return err
+			}
+			out.Texts = &texts
 		}
 		httpx.OK(w, out)
 		return nil
@@ -265,6 +483,23 @@ func registerSheets(r *Router, d *Deps) {
 		userID, err := targetBodyUser(ctx, d, actor, body.userID)
 		if err != nil {
 			return err
+		}
+		if body.format == core.SheetFormatDictation {
+			sentIDs := []string{}
+			for _, it := range body.items {
+				if core.IsSentenceItem(it.Type) {
+					sentIDs = append(sentIDs, it.SentenceID)
+				}
+			}
+			if err := service.AssertSentencesUsable(ctx, d.DB, actor, userID, sentIDs); err != nil {
+				return err
+			}
+			out, err := service.CreateDictationSheet(ctx, d.DB, d.Now(), userID, actor.ID, body.items, body.copies, body.limits)
+			if err != nil {
+				return err
+			}
+			httpx.OK(w, out)
+			return nil
 		}
 		out, err := service.CreateSheet(ctx, d.DB, d.Now(), userID, actor.ID, body.wordIDs, body.modes, body.copies, body.perSheet)
 		if err != nil {
@@ -302,6 +537,30 @@ func registerSheets(r *Router, d *Deps) {
 			return err
 		}
 		httpx.OK(w, detail)
+		return nil
+	}, study)
+
+	// 默写单批改（spec 0006）：能查看该学生的人都可以提交；学生本人的账号提交标记为自批；只能提交一次。
+	r.Post("/sheets/{id}/grade", func(w http.ResponseWriter, req *http.Request) error {
+		ctx := req.Context()
+		actor := auth.ActorFrom(ctx)
+		body, err := httpx.Decode[sheetGradeBody](req)
+		if err != nil {
+			return err
+		}
+		id := req.PathValue("id")
+		owner, err := service.SheetOwner(ctx, d.DB, id)
+		if err != nil {
+			return err
+		}
+		if err := service.AssertCanViewUser(ctx, d.DB, actor, owner.UserID); err != nil {
+			return err
+		}
+		out, err := service.GradeSheet(ctx, d.DB, d.Cfg.Location, d.Now(), actor, id, body.results)
+		if err != nil {
+			return err
+		}
+		httpx.OK(w, out)
 		return nil
 	}, study)
 

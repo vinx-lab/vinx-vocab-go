@@ -147,6 +147,92 @@ func AssertBooksVisible(ctx context.Context, q store.Querier, a *Actor, ids []st
 	return nil
 }
 
+// AssertSentenceSource 默写单句子来源的范围判定（spec 0006）：单元的篇须在操作者可见的词书里；
+// AI 短文与批改过的默写只能用目标学生自己的；「要学的句子」按目标学生取，不需要额外判定。
+func AssertSentenceSource(ctx context.Context, q store.Querier, a *Actor, target string, src SentenceSource) error {
+	switch src.Kind {
+	case SentenceSourceText:
+		filter, args, err := VisibleBookFilter(ctx, q, a, "b")
+		if err != nil {
+			return err
+		}
+		var id string
+		err = q.QueryRowContext(ctx, `SELECT t."id" FROM "UnitText" t JOIN "Unit" u ON u."id" = t."unitId" JOIN "Book" b ON b."id" = u."bookId" WHERE t."id" = ? AND `+filter,
+			append([]any{src.TextID}, args...)...).Scan(&id)
+		if store.IsNoRows(err) {
+			return httpx.NotFound("篇不存在")
+		}
+		return err
+	case SentenceSourcePassage:
+		var owner string
+		err := q.QueryRowContext(ctx, `SELECT "userId" FROM "Passage" WHERE "id" = ?`, src.PassageID).Scan(&owner)
+		if store.IsNoRows(err) {
+			return httpx.NotFound("短文不存在")
+		}
+		if err != nil {
+			return err
+		}
+		if owner != target {
+			return httpx.Forbidden("只能用该学生自己的短文")
+		}
+		return nil
+	case SentenceSourceSession:
+		owner, err := SheetSourceSessionOwner(ctx, q, src.SessionID)
+		if err != nil {
+			return err
+		}
+		if owner != target {
+			return httpx.Forbidden("只能用该学生自己的测试错题")
+		}
+		return nil
+	}
+	return nil
+}
+
+// AssertSentencesUsable 默写单里的句子都存在（否则 400）且可以给目标学生出题（否则 403）：
+// 在操作者可见词书的某一篇里，或在目标学生自己的 AI 短文里，或目标学生作答过（要学的句子、错题再出一份）。
+func AssertSentencesUsable(ctx context.Context, q store.Querier, a *Actor, target string, ids []string) error {
+	ids = dedupe(ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	filter, fargs, err := VisibleBookFilter(ctx, q, a, "b")
+	if err != nil {
+		return err
+	}
+	usable := map[string]bool{}
+	for i := 0; i < len(ids); i += 300 {
+		chunk := ids[i:min(i+300, len(ids))]
+		ph, cargs := store.Placeholders(len(chunk)), store.Args(chunk)
+		var n int
+		if err := q.QueryRowContext(ctx, `SELECT count(*) FROM "Sentence" WHERE "id" IN (`+ph+`)`, cargs...).Scan(&n); err != nil {
+			return err
+		}
+		if n != len(chunk) {
+			return httpx.Validation("有句子不存在")
+		}
+		args := append(append([]any{}, cargs...), fargs...)
+		args = append(append(args, target), cargs...)
+		args = append(append(args, target), cargs...)
+		got, err := queryStrings(ctx, q, `SELECT uts."sentenceId" FROM "UnitTextSentence" uts JOIN "UnitText" t ON t."id" = uts."textId"
+				JOIN "Unit" u ON u."id" = t."unitId" JOIN "Book" b ON b."id" = u."bookId" WHERE uts."sentenceId" IN (`+ph+`) AND `+filter+`
+			UNION SELECT ps."sentenceId" FROM "PassageSentence" ps JOIN "Passage" p ON p."id" = ps."passageId" WHERE p."userId" = ? AND ps."sentenceId" IN (`+ph+`)
+			UNION SELECT "sentenceId" FROM "SentenceAnswer" WHERE "userId" = ? AND "sentenceId" IN (`+ph+`)`, args...)
+		if err != nil {
+			return err
+		}
+		for _, id := range got {
+			usable[id] = true
+		}
+	}
+	for _, id := range ids {
+		if !usable[id] {
+			return httpx.Forbidden("只能用可见词书里的句子或该学生自己的短文")
+		}
+	}
+	return nil
+}
+
 // TargetUsesClasses 确定目标词书时是否看班级成员关系：班级版看（有班级用班级目标）；
 // 个人版不看（班级功能关闭、无法退班，只用自己设的目标）。
 func TargetUsesClasses(a *Actor) bool { return !IsPersonal(a) }

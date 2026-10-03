@@ -153,9 +153,10 @@ type sheetWordRow struct {
 	Phonetic     *string
 	PartOfSpeech *string
 	Definition   string
+	Type         string
 }
 
-const sheetWordSelect = `"id","spelling","phonetic","partOfSpeech","definition"`
+const sheetWordSelect = `"id","spelling","phonetic","partOfSpeech","definition","type"`
 
 // sheetWordDetails 按 id 批量取词的展示字段。
 func sheetWordDetails(ctx context.Context, q store.Querier, ids []string) (map[string]sheetWordRow, error) {
@@ -170,7 +171,7 @@ func sheetWordDetails(ctx context.Context, q store.Querier, ids []string) (map[s
 	defer rows.Close()
 	for rows.Next() {
 		var w sheetWordRow
-		if err := rows.Scan(&w.ID, &w.Spelling, &w.Phonetic, &w.PartOfSpeech, &w.Definition); err != nil {
+		if err := rows.Scan(&w.ID, &w.Spelling, &w.Phonetic, &w.PartOfSpeech, &w.Definition, &w.Type); err != nil {
 			return nil, err
 		}
 		out[w.ID] = w
@@ -206,16 +207,33 @@ type SheetPreviewItem struct {
 	Definition   string                  `json:"definition"`
 	Score        int                     `json:"score"`
 	Reasons      []core.UnfamiliarReason `json:"reasons"`
+	// Type 默写单预览才有：word | phrase（spec 0006）。
+	Type string `json:"type,omitempty"`
 }
 
 // SheetPreviewResult POST /sheets/preview 的返回。
 type SheetPreviewResult struct {
 	Items []SheetPreviewItem `json:"items"`
+	// Sentences 默写单预览才有（spec 0006）。
+	Sentences *[]DictationSentencePreview `json:"sentences,omitempty"`
 }
 
 // PreviewSheet 预览选词（旧 previewSheet）。
 func PreviewSheet(ctx context.Context, db *store.DB, loc *time.Location, now time.Time, userID string, count int, include []string, source *SheetSource) (*SheetPreviewResult, error) {
 	now = msTime(now)
+	picks, err := pickSheetWords(ctx, db, loc, now, userID, count, include, source)
+	if err != nil {
+		return nil, err
+	}
+	items, err := previewItems(ctx, db, picks, false)
+	if err != nil {
+		return nil, err
+	}
+	return &SheetPreviewResult{Items: items}, nil
+}
+
+// pickSheetWords 按来源选词（已按从难到易排好）。
+func pickSheetWords(ctx context.Context, db *store.DB, loc *time.Location, now time.Time, userID string, count int, include []string, source *SheetSource) ([]core.UnfamiliarPick, error) {
 	candidates, err := loadUnfamiliarCandidates(ctx, db, loc, now, userID)
 	if err != nil {
 		return nil, err
@@ -262,6 +280,11 @@ func PreviewSheet(ctx context.Context, db *store.DB, loc *time.Location, now tim
 		}
 		picks = core.SelectUnfamiliarWords(candidates, core.SelectOptions{Now: now, Count: count, Exclude: exclude, Include: include})
 	}
+	return picks, nil
+}
+
+// previewItems 选词结果补上词的展示字段（词已不存在的跳过）。
+func previewItems(ctx context.Context, db store.Querier, picks []core.UnfamiliarPick, withType bool) ([]SheetPreviewItem, error) {
 	ids := make([]string, len(picks))
 	for i, p := range picks {
 		ids[i] = p.WordID
@@ -280,9 +303,21 @@ func PreviewSheet(ctx context.Context, db *store.DB, loc *time.Location, now tim
 		if reasons == nil {
 			reasons = []core.UnfamiliarReason{}
 		}
-		items = append(items, SheetPreviewItem{WordID: w.ID, Spelling: w.Spelling, Phonetic: w.Phonetic, PartOfSpeech: w.PartOfSpeech, Definition: w.Definition, Score: p.Score, Reasons: reasons})
+		it := SheetPreviewItem{WordID: w.ID, Spelling: w.Spelling, Phonetic: w.Phonetic, PartOfSpeech: w.PartOfSpeech, Definition: w.Definition, Score: p.Score, Reasons: reasons}
+		if withType {
+			it.Type = wordItemType(w.Type)
+		}
+		items = append(items, it)
 	}
-	return &SheetPreviewResult{Items: items}, nil
+	return items, nil
+}
+
+// wordItemType 词条在默写单里的题型：Word.type = phrase → 短语，其余 → 单词。
+func wordItemType(wordType string) string {
+	if wordType == core.DictPhrase {
+		return core.DictPhrase
+	}
+	return core.DictWord
 }
 
 // SheetSourceItem 错词来源列表里的一项。
@@ -299,6 +334,10 @@ type SheetSourceItem struct {
 // SheetSourcesResult GET /sheets/sources 的返回。
 type SheetSourcesResult struct {
 	Sessions []SheetSourceItem `json:"sessions"`
+	// LearningSentences 「要学的句子」数量（默写单的句子来源，spec 0006）。
+	LearningSentences int `json:"learningSentences"`
+	// Texts 查询带 unitId 时：该单元的篇（句型清单 / 课文），供默写单选句子来源。
+	Texts *[]SheetSourceText `json:"texts,omitempty"`
 }
 
 // SheetSources 错词来源列表：近 30 天有首次答错的学习组（检测、单词单测试、学习组），新的在前（旧 sheetSources）。
@@ -415,11 +454,23 @@ func CreateSheet(ctx context.Context, db *store.DB, now time.Time, userID, creat
 	if len(modes) == 0 {
 		return nil, httpx.Validation("至少选择一种题型")
 	}
-	modesJSON, err := json.Marshal(modes)
-	if err != nil {
-		return nil, err
+	rows := make([]sheetInsert, len(groups))
+	for i, g := range groups {
+		rows[i] = sheetInsert{format: core.SheetFormatSelftest, wordIDs: g, modes: modes}
 	}
+	return insertSheets(ctx, db, now, userID, creatorID, rows)
+}
 
+// sheetInsert 要插入的一份单词单。
+type sheetInsert struct {
+	format  string
+	wordIDs []string
+	modes   []string
+	items   []core.DictationItem
+}
+
+// insertSheets 同一事务里连续取号插入多份；并发撞 (userId, seq) 唯一键时整批重试（K34）。
+func insertSheets(ctx context.Context, db *store.DB, now time.Time, userID, creatorID string, sheets []sheetInsert) (*SheetCreateResult, error) {
 	for attempt := 0; attempt < 5; attempt++ {
 		var items []SheetCreateItem
 		txErr := db.Tx(ctx, func(tx *sql.Tx) error {
@@ -431,16 +482,24 @@ func CreateSheet(ctx context.Context, db *store.DB, now time.Time, userID, creat
 			if base.Valid {
 				start = int(base.Int64)
 			}
-			items = make([]SheetCreateItem, 0, len(groups))
-			for i, g := range groups {
-				idsJSON, err := json.Marshal(g)
+			items = make([]SheetCreateItem, 0, len(sheets))
+			for i, g := range sheets {
+				idsJSON, err := json.Marshal(store.JSON[[]string]{V: g.wordIDs})
+				if err != nil {
+					return err
+				}
+				modesJSON, err := json.Marshal(store.JSON[[]string]{V: g.modes})
+				if err != nil {
+					return err
+				}
+				itemsJSON, err := json.Marshal(store.JSON[[]core.DictationItem]{V: g.items})
 				if err != nil {
 					return err
 				}
 				id := store.NewID()
 				seq := start + 1 + i
-				if _, err := tx.ExecContext(ctx, `INSERT INTO "WordSheet" ("id","userId","creatorId","seq","wordIds","modes","createdAt") VALUES (?,?,?,?,?,?,?)`,
-					id, userID, creatorID, seq, string(idsJSON), string(modesJSON), store.NewTime(now)); err != nil {
+				if _, err := tx.ExecContext(ctx, `INSERT INTO "WordSheet" ("id","userId","creatorId","seq","wordIds","modes","format","items","createdAt") VALUES (?,?,?,?,?,?,?,?,?)`,
+					id, userID, creatorID, seq, string(idsJSON), string(modesJSON), g.format, string(itemsJSON), store.NewTime(now)); err != nil {
 					return err
 				}
 				items = append(items, SheetCreateItem{ID: id, Seq: seq})
@@ -471,14 +530,44 @@ type SheetListItem struct {
 	WordCount       int                   `json:"wordCount"`
 	CreatedAt       store.Time            `json:"createdAt"`
 	CreatorName     string                `json:"creatorName"`
-	Status          string                `json:"status"` // pending | testing | tested
+	Status          string                `json:"status"` // pending | testing | tested（默写单：pending 待批改 / tested 已批改）
 	FirstResult     *SheetListFirstResult `json:"firstResult"`
 	ActiveSessionID *string               `json:"activeSessionId"`
+	// spec 0006：格式、题数（自测表 = 词数；默写单 = 全部题目）、默写单是否自批（只有已批改的默写单才有）。
+	Format     string `json:"format"`
+	ItemCount  int    `json:"itemCount"`
+	SelfGraded *bool  `json:"selfGraded,omitempty"`
 }
 
 type sheetSessionBrief struct {
 	id, status string
 	result     *string
+	snapshot   string
+}
+
+// sheetFirstResult 首次交卷（默写单：批改）的成绩：默写单的句子题一并计入。
+func sheetFirstResult(b *sheetSessionBrief) (*SheetListFirstResult, error) {
+	var res SessionResult
+	if b.result != nil {
+		if err := json.Unmarshal([]byte(*b.result), &res); err != nil {
+			return nil, err
+		}
+	}
+	out := &SheetListFirstResult{SessionID: b.id, Correct: res.CorrectFirst, Total: res.TotalFirst}
+	if res.Sentences != nil {
+		out.Correct += res.Sentences.Correct
+		out.Total += res.Sentences.Total
+	}
+	return out, nil
+}
+
+// snapshotSelfGraded 默写单批改组快照里的自批标记（其他组为 nil）。
+func snapshotSelfGraded(text string) (*bool, error) {
+	snap, err := ParseSnapshot(text)
+	if err != nil {
+		return nil, err
+	}
+	return snap.SelfGraded, nil
 }
 
 // ListSheets 单词单列表（旧 listSheets），按编号倒序。
@@ -487,26 +576,31 @@ func ListSheets(ctx context.Context, q store.Querier, userID string, page, limit
 	if err := q.QueryRowContext(ctx, `SELECT count(*) FROM "WordSheet" WHERE "userId" = ?`, userID).Scan(&total); err != nil {
 		return httpx.Paginated[SheetListItem]{}, err
 	}
-	rows, err := q.QueryContext(ctx, `SELECT w."id", w."seq", w."wordIds", w."createdAt", u."name"
+	rows, err := q.QueryContext(ctx, `SELECT w."id", w."seq", w."wordIds", w."createdAt", u."name", w."format", w."items"
 		FROM "WordSheet" w JOIN "User" u ON u."id" = w."creatorId"
 		WHERE w."userId" = ? ORDER BY w."seq" DESC LIMIT ? OFFSET ?`, userID, limit, (page-1)*limit)
 	if err != nil {
 		return httpx.Paginated[SheetListItem]{}, err
 	}
 	type row struct {
-		id, creatorName string
-		seq, wordCount  int
-		createdAt       store.Time
+		id, creatorName, format   string
+		seq, wordCount, itemCount int
+		createdAt                 store.Time
 	}
 	list := []row{}
 	for rows.Next() {
 		var r row
 		var wordIDs store.JSON[[]string]
-		if err := rows.Scan(&r.id, &r.seq, &wordIDs, &r.createdAt, &r.creatorName); err != nil {
+		var items store.JSON[[]core.DictationItem]
+		if err := rows.Scan(&r.id, &r.seq, &wordIDs, &r.createdAt, &r.creatorName, &r.format, &items); err != nil {
 			rows.Close()
 			return httpx.Paginated[SheetListItem]{}, err
 		}
 		r.wordCount = len(wordIDs.V)
+		r.itemCount = r.wordCount
+		if r.format == core.SheetFormatDictation {
+			r.itemCount = len(items.V)
+		}
 		list = append(list, r)
 	}
 	rows.Close()
@@ -520,14 +614,14 @@ func ListSheets(ctx context.Context, q store.Querier, userID string, page, limit
 	}
 	sessionsBySheet := map[string][]sheetSessionBrief{}
 	if len(ids) > 0 {
-		srows, err := q.QueryContext(ctx, `SELECT "sheetId","id","status","result" FROM "StudySession" WHERE "sheetId" IN (`+store.Placeholders(len(ids))+`) ORDER BY "startedAt", rowid`, store.Args(ids)...)
+		srows, err := q.QueryContext(ctx, `SELECT "sheetId","id","status","result","snapshot" FROM "StudySession" WHERE "sheetId" IN (`+store.Placeholders(len(ids))+`) ORDER BY "startedAt", rowid`, store.Args(ids)...)
 		if err != nil {
 			return httpx.Paginated[SheetListItem]{}, err
 		}
 		for srows.Next() {
 			var sheetID string
 			var b sheetSessionBrief
-			if err := srows.Scan(&sheetID, &b.id, &b.status, &b.result); err != nil {
+			if err := srows.Scan(&sheetID, &b.id, &b.status, &b.result, &b.snapshot); err != nil {
 				srows.Close()
 				return httpx.Paginated[SheetListItem]{}, err
 			}
@@ -553,15 +647,18 @@ func ListSheets(ctx context.Context, q store.Querier, userID string, page, limit
 		}
 		status := "pending"
 		var firstResult *SheetListFirstResult
+		var selfGraded *bool
 		if first != nil {
 			status = "tested"
-			var res SessionResult
-			if first.result != nil {
-				if err := json.Unmarshal([]byte(*first.result), &res); err != nil {
+			var err error
+			if firstResult, err = sheetFirstResult(first); err != nil {
+				return httpx.Paginated[SheetListItem]{}, err
+			}
+			if r.format == core.SheetFormatDictation {
+				if selfGraded, err = snapshotSelfGraded(first.snapshot); err != nil {
 					return httpx.Paginated[SheetListItem]{}, err
 				}
 			}
-			firstResult = &SheetListFirstResult{SessionID: first.id, Correct: res.CorrectFirst, Total: res.TotalFirst}
 		} else if active != nil {
 			status = "testing"
 		}
@@ -569,7 +666,8 @@ func ListSheets(ctx context.Context, q store.Querier, userID string, page, limit
 		if active != nil {
 			activeID = &active.id
 		}
-		items = append(items, SheetListItem{ID: r.id, Seq: r.seq, WordCount: r.wordCount, CreatedAt: r.createdAt, CreatorName: r.creatorName, Status: status, FirstResult: firstResult, ActiveSessionID: activeID})
+		items = append(items, SheetListItem{ID: r.id, Seq: r.seq, WordCount: r.wordCount, CreatedAt: r.createdAt, CreatorName: r.creatorName, Status: status, FirstResult: firstResult, ActiveSessionID: activeID,
+			Format: r.format, ItemCount: r.itemCount, SelfGraded: selfGraded})
 	}
 	return httpx.Page(items, total, page, limit), nil
 }
@@ -598,6 +696,10 @@ type SheetDetailView struct {
 	Student   SheetStudent      `json:"student"`
 	Modes     []string          `json:"modes"`
 	Words     []SheetDetailWord `json:"words"`
+	// spec 0006：格式；默写单的题目（含中文提示、答案、转换题的原句；自测表为 []）；批改结果（未批改或自测表为 null）。
+	Format  string              `json:"format"`
+	Items   []DictationItemView `json:"items"`
+	Grading *SheetGrading       `json:"grading"`
 }
 
 // SheetDetail 明细（旧 sheetDetail）。
@@ -605,9 +707,10 @@ func SheetDetail(ctx context.Context, q store.Querier, id string) (*SheetDetailV
 	var v SheetDetailView
 	var wordIDs store.JSON[[]string]
 	var modes store.JSON[[]string]
-	err := q.QueryRowContext(ctx, `SELECT w."id", w."userId", w."seq", w."createdAt", w."wordIds", w."modes", u."id", u."name"
+	var items store.JSON[[]core.DictationItem]
+	err := q.QueryRowContext(ctx, `SELECT w."id", w."userId", w."seq", w."createdAt", w."wordIds", w."modes", u."id", u."name", w."format", w."items"
 		FROM "WordSheet" w JOIN "User" u ON u."id" = w."userId" WHERE w."id" = ?`, id).
-		Scan(&v.ID, &v.UserID, &v.Seq, &v.CreatedAt, &wordIDs, &modes, &v.Student.ID, &v.Student.Name)
+		Scan(&v.ID, &v.UserID, &v.Seq, &v.CreatedAt, &wordIDs, &modes, &v.Student.ID, &v.Student.Name, &v.Format, &items)
 	if store.IsNoRows(err) {
 		return nil, httpx.NotFound("单词单不存在")
 	}
@@ -626,6 +729,15 @@ func SheetDetail(ctx context.Context, q store.Querier, id string) (*SheetDetailV
 			continue
 		}
 		v.Words = append(v.Words, SheetDetailWord{WordID: w.ID, Spelling: w.Spelling, Phonetic: w.Phonetic, PartOfSpeech: w.PartOfSpeech, Definition: w.Definition})
+	}
+	v.Items = []DictationItemView{}
+	if v.Format == core.SheetFormatDictation {
+		if v.Items, err = dictationItemViews(ctx, q, items.V); err != nil {
+			return nil, err
+		}
+		if v.Grading, err = sheetGrading(ctx, q, v.ID, v.Items); err != nil {
+			return nil, err
+		}
 	}
 	return &v, nil
 }

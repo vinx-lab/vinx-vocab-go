@@ -40,7 +40,8 @@ func TestMigrateCreatesAllTables(t *testing.T) {
 	want := []string{"Answer", "AppSetting", "Book", "ClassMember", "Classroom", "MemoryState", "Passage", "Plan", "PlanTarget", "PlanUnit", "ReviewLog", "StudySession", "Unit", "UnitWord", "User", "Word", "WordSheet",
 		"ClassTargetBook", "UserTargetBook", // 0002_target_books
 		// 0003_sentences（spec 0004）
-		"Sentence", "SentenceWord", "UnitText", "UnitTextSentence", "PassageSentence"}
+		"Sentence", "SentenceWord", "UnitText", "UnitTextSentence", "PassageSentence",
+		"SentenceAnswer"} // 0005_dictation（spec 0006）
 	sort.Strings(want)
 	if len(names) != len(want) || !equal(names, want) {
 		t.Fatalf("tables = %v", names)

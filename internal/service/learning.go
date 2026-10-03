@@ -144,6 +144,11 @@ type Snapshot struct {
 	PlanName *string        `json:"planName"`
 	Modes    []string       `json:"modes"`
 	Items    []SnapshotItem `json:"items"`
+	// 默写单批改组（spec 0006）才有以下字段：格式、批改人、是否自批、句子题。
+	Format     *string            `json:"format,omitempty"`
+	GradedBy   *SnapshotUser      `json:"gradedBy,omitempty"`
+	SelfGraded *bool              `json:"selfGraded,omitempty"`
+	Sentences  []SnapshotSentence `json:"sentences,omitempty"`
 	// raw 每个词的原始 JSON（接口原样返回，保持旧数据里缺省字段的形态）。
 	raw []json.RawMessage
 }
@@ -155,6 +160,22 @@ func (s *Snapshot) RawItem(i int) json.RawMessage {
 	}
 	b, _ := json.Marshal(s.Items[i])
 	return b
+}
+
+// SnapshotUser 快照里的批改人。
+type SnapshotUser struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// SnapshotSentence 默写单快照里的一道句子题（Index 为题目在默写单 items 里的下标）。
+type SnapshotSentence struct {
+	Index      int    `json:"index"`
+	SentenceID string `json:"sentenceId"`
+	Type       string `json:"type"`
+	En         string `json:"en"`
+	Cn         string `json:"cn"`
+	Prompt     string `json:"prompt"`
 }
 
 // ParseSnapshot 解析快照 JSON 文本。
@@ -689,14 +710,18 @@ func startSheetSession(ctx context.Context, db *store.DB, loc *time.Location, no
 		seq        int
 		wordIDs    store.JSON[[]string]
 		modes      store.JSON[[]string]
+		format     string
 	}
-	err := db.QueryRowContext(ctx, `SELECT "id","userId","seq","wordIds","modes" FROM "WordSheet" WHERE "id" = ?`, *sheetID).
-		Scan(&sheet.id, &sheet.userID, &sheet.seq, &sheet.wordIDs, &sheet.modes)
+	err := db.QueryRowContext(ctx, `SELECT "id","userId","seq","wordIds","modes","format" FROM "WordSheet" WHERE "id" = ?`, *sheetID).
+		Scan(&sheet.id, &sheet.userID, &sheet.seq, &sheet.wordIDs, &sheet.modes, &sheet.format)
 	if store.IsNoRows(err) || (err == nil && sheet.userID != userID) {
 		return nil, httpx.NotFound("单词单不存在")
 	}
 	if err != nil {
 		return nil, err
+	}
+	if sheet.format == core.SheetFormatDictation {
+		return nil, httpx.NewError(httpx.CodeInvalidAction, "默写单不能在线测试，请打印后批改", nil)
 	}
 	active, err := findActiveSession(ctx, db, userID, nil, "sheet")
 	if err != nil {
@@ -911,6 +936,15 @@ type SessionResult struct {
 	NewLearned   int            `json:"newLearned"`
 	Ratings      map[string]int `json:"ratings"`
 	WrongWordIDs []string       `json:"wrongWordIds"`
+	// Sentences 默写单的句子题成绩（spec 0006；其他组没有这个字段）。
+	Sentences *SentenceResult `json:"sentences,omitempty"`
+}
+
+// SentenceResult 默写单句子题的成绩。
+type SentenceResult struct {
+	Total            int      `json:"total"`
+	Correct          int      `json:"correct"`
+	WrongSentenceIDs []string `json:"wrongSentenceIds"`
 }
 
 // CompleteOutput 完成接口的数据（旧 { session: { id, status }, result }）。
@@ -954,8 +988,6 @@ type memoryRow struct {
 //   - 其余组有记忆时更新，但检测 / 单词单重考不更新，且每个词每个学习日最多更新一次（K19 / K20）；
 //   - drill 不更新记忆。
 func CompleteSessionTx(ctx context.Context, tx store.Querier, loc *time.Location, now time.Time, userID, sessionID string) (*CompleteOutput, error) {
-	now = msTime(now)
-	day, dayStart, _ := TodayRange(loc, now)
 	s, err := GetSession(ctx, tx, sessionID)
 	if err != nil {
 		return nil, err
@@ -963,9 +995,9 @@ func CompleteSessionTx(ctx context.Context, tx store.Querier, loc *time.Location
 	if s == nil || s.UserID != userID {
 		return nil, httpx.NotFound("学习组不存在")
 	}
-	out := &CompleteOutput{}
-	out.Session.ID = s.ID
 	if s.Status == "completed" {
+		out := &CompleteOutput{}
+		out.Session.ID = s.ID
 		out.Session.Status = s.Status
 		out.Result = json.RawMessage("null")
 		if s.Result != nil {
@@ -973,6 +1005,18 @@ func CompleteSessionTx(ctx context.Context, tx store.Querier, loc *time.Location
 		}
 		return out, nil
 	}
+	return settleSessionTx(ctx, tx, loc, now, s, nil)
+}
+
+// settleSessionTx 结算的主体（CompleteSessionTx 与默写单批改共用）：按作答推导评分、更新记忆、写结果并把组标为已完成。
+// 不检查组的状态：默写单批改直接插入一个已完成的组（避开 StudySession_active_uniq）再调用它。
+// extend 非 nil 时在写库前补充结果（默写单的句子成绩）。
+func settleSessionTx(ctx context.Context, tx store.Querier, loc *time.Location, now time.Time, s *SessionRow, extend func(*SessionResult)) (*CompleteOutput, error) {
+	now = msTime(now)
+	day, dayStart, _ := TodayRange(loc, now)
+	userID, sessionID := s.UserID, s.ID
+	out := &CompleteOutput{}
+	out.Session.ID = s.ID
 
 	snap, err := ParseSnapshot(s.SnapshotText)
 	if err != nil {
@@ -1114,6 +1158,9 @@ func CompleteSessionTx(ctx context.Context, tx store.Querier, loc *time.Location
 	if len(first) > 0 {
 		v := float64(correctFirst) / float64(len(first))
 		result.Accuracy = &v
+	}
+	if extend != nil {
+		extend(&result)
 	}
 	text, err := json.Marshal(result)
 	if err != nil {

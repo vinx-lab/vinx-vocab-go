@@ -188,6 +188,9 @@ type SessionListItem struct {
 	DayKey      string          `json:"dayKey"`
 	StartedAt   store.Time      `json:"startedAt"`
 	CompletedAt store.NullTime  `json:"completedAt"`
+	// 默写单批改组才有（spec 0006）：格式与自批标记。
+	Format     *string `json:"format,omitempty"`
+	SelfGraded *bool   `json:"selfGraded,omitempty"`
 }
 
 func rawOrNull(s *string) json.RawMessage {
@@ -229,6 +232,7 @@ func UserSessions(ctx context.Context, q store.Querier, userID string, page, lim
 		items = append(items, SessionListItem{
 			ID: s.ID, Kind: s.Kind, Status: s.Status, PlanID: s.PlanID, PlanName: snap.PlanName, Words: len(snap.Items),
 			Answers: n, Result: rawOrNull(s.Result), DayKey: s.DayKey, StartedAt: s.StartedAt, CompletedAt: s.CompletedAt,
+			Format: snap.Format, SelfGraded: snap.SelfGraded,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -295,6 +299,23 @@ type SessionDetailView struct {
 	StartedAt   store.Time          `json:"startedAt"`
 	CompletedAt store.NullTime      `json:"completedAt"`
 	Words       []SessionDetailWord `json:"words"`
+	// 默写单批改组才有（spec 0006）：格式、批改人、自批标记、句子题的对错。
+	Format     *string                 `json:"format,omitempty"`
+	GradedBy   *SnapshotUser           `json:"gradedBy,omitempty"`
+	SelfGraded *bool                   `json:"selfGraded,omitempty"`
+	Sentences  []SessionDetailSentence `json:"sentences,omitempty"`
+}
+
+// SessionDetailSentence 默写单批改组里的一道句子题。
+type SessionDetailSentence struct {
+	Index      int     `json:"index"`
+	SentenceID string  `json:"sentenceId"`
+	Type       string  `json:"type"`
+	En         string  `json:"en"`
+	Cn         string  `json:"cn"`
+	Prompt     string  `json:"prompt"`
+	Correct    bool    `json:"correct"`
+	UserAnswer *string `json:"userAnswer"`
 }
 
 // SessionDetailUser 组主人。
@@ -382,10 +403,17 @@ func SessionRecord(ctx context.Context, q store.Querier, a *Actor, sessionID str
 		words = append(words, SessionDetailWord{WordID: it.WordID, Spelling: it.Spelling, Definition: it.Definition,
 			Phonetic: it.Phonetic, PartOfSpeech: it.PartOfSpeech, Answers: as, Review: logs[it.WordID]})
 	}
-	return &SessionDetailView{
+	view := &SessionDetailView{
 		ID: s.ID, User: user, Kind: s.Kind, Status: s.Status, PlanID: s.PlanID, PlanName: snap.PlanName, Modes: snap.Modes,
 		Result: rawOrNull(s.Result), StartedAt: s.StartedAt, CompletedAt: s.CompletedAt, Words: words,
-	}, nil
+		Format: snap.Format, GradedBy: snap.GradedBy, SelfGraded: snap.SelfGraded,
+	}
+	if len(snap.Sentences) > 0 {
+		if view.Sentences, err = sessionSentenceDetails(ctx, q, s.ID, snap.Sentences); err != nil {
+			return nil, err
+		}
+	}
+	return view, nil
 }
 
 // WordListItem /records/words 的一项。
@@ -603,6 +631,9 @@ type NextSheetView struct {
 	WordCount       int     `json:"wordCount"`
 	ActiveSessionID *string `json:"activeSessionId"`
 	Remaining       int     `json:"remaining"`
+	// Format selftest | dictation（spec 0006：默写单在今日页显示「待批改」）；ItemCount 默写单的题数（自测表 = 词数）。
+	Format    string `json:"format"`
+	ItemCount int    `json:"itemCount"`
 }
 
 // NextSheet 旧 services/sheets.ts nextSheet + lib/sheet-batch.ts pickNextSheet：
@@ -610,7 +641,8 @@ type NextSheetView struct {
 func NextSheet(ctx context.Context, q store.Querier, userID string) (*NextSheetView, error) {
 	rows, err := q.QueryContext(ctx, `SELECT w."id", w."seq", w."wordIds",
 			EXISTS (SELECT 1 FROM "StudySession" s WHERE s."sheetId" = w."id" AND s."status" = 'completed'),
-			(SELECT s."id" FROM "StudySession" s WHERE s."sheetId" = w."id" AND s."status" = 'active' LIMIT 1)
+			(SELECT s."id" FROM "StudySession" s WHERE s."sheetId" = w."id" AND s."status" = 'active' LIMIT 1),
+			w."format", w."items"
 		FROM "WordSheet" w WHERE w."userId" = ?`, userID)
 	if err != nil {
 		return nil, err
@@ -621,16 +653,23 @@ func NextSheet(ctx context.Context, q store.Querier, userID string) (*NextSheetV
 		words    int
 		tested   bool
 		activeID *string
+		format   string
+		items    int
 	}
 	list := []row{}
 	for rows.Next() {
 		var r row
 		var ids store.JSON[[]string]
-		if err := rows.Scan(&r.id, &r.seq, &ids, &r.tested, &r.activeID); err != nil {
+		var items store.JSON[[]core.DictationItem]
+		if err := rows.Scan(&r.id, &r.seq, &ids, &r.tested, &r.activeID, &r.format, &items); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		r.words = len(ids.V)
+		r.items = r.words
+		if r.format == core.SheetFormatDictation {
+			r.items = len(items.V)
+		}
 		// 旧查询条件：从未测完，或有进行中的测试
 		if !r.tested || r.activeID != nil {
 			list = append(list, r)
@@ -666,5 +705,5 @@ func NextSheet(ctx context.Context, q store.Querier, userID string) (*NextSheetV
 		}
 	}
 	n := list[next]
-	return &NextSheetView{ID: n.id, Seq: n.seq, WordCount: n.words, ActiveSessionID: n.activeID, Remaining: remaining}, nil
+	return &NextSheetView{ID: n.id, Seq: n.seq, WordCount: n.words, ActiveSessionID: n.activeID, Remaining: remaining, Format: n.format, ItemCount: n.items}, nil
 }
