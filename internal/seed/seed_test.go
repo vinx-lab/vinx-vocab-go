@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/vinx-lab/vinx-vocab-go/internal/auth"
+	"github.com/vinx-lab/vinx-vocab-go/internal/core/vocabparser"
 	"github.com/vinx-lab/vinx-vocab-go/internal/store"
 )
 
@@ -46,39 +47,76 @@ func dump(t *testing.T, db *store.DB) []string {
 	return out
 }
 
-// 与旧 seed（Node + PostgreSQL）导入结果逐行一致：testdata/oracle-seed.tsv 由旧仓库 seed 后导出。
+// coreBook 中考核心词汇：spec 0007 起拼写末尾的注释由解析器规整，不再与旧 seed 一致。
+const coreBook = "中考核心词汇"
+
+func readLines(t *testing.T, path string) []string {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	var out []string
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		out = append(out, sc.Text())
+	}
+	return out
+}
+
+// compareLines 逐行比较，最多报 10 处。
+func compareLines(t *testing.T, name string, got, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("%s：行数 %d，期望 %d", name, len(got), len(want))
+	}
+	diffs := 0
+	for i := range want {
+		if got[i] != want[i] {
+			if diffs < 10 {
+				t.Errorf("%s 第 %d 行\n go:   %s\n want: %s", name, i+1, got[i], want[i])
+			}
+			diffs++
+		}
+	}
+	if diffs > 0 {
+		t.Fatalf("%s：共 %d 行不一致", name, diffs)
+	}
+}
+
+// 五本课本与旧 seed（Node + PostgreSQL）导入结果逐行一致：testdata/oracle-seed.tsv 由旧仓库 seed 后导出。
+// 中考核心词汇与 testdata/core-seed.tsv 一致：spec 0007 之后单文件版自己的快照（拼写注释规整、
+// 源文件个别行修正），不再是旧 seed 的结果。改了解析器或源词表后用 UPDATE_CORE_SEED=1 重新生成并审阅差异。
 func TestSeedMatchesOracle(t *testing.T) {
 	db := openTemp(t)
 	ctx := context.Background()
 	if err := Demo(ctx, db, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	f, err := os.Open("testdata/oracle-seed.tsv")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	var want []string
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		want = append(want, sc.Text())
-	}
-	got := dump(t, db)
-	if len(got) != len(want) {
-		t.Fatalf("行数 %d，oracle %d", len(got), len(want))
-	}
-	diffs := 0
-	for i := range want {
-		if got[i] != want[i] {
-			if diffs < 10 {
-				t.Errorf("第 %d 行\n go:     %s\n oracle: %s", i+1, got[i], want[i])
-			}
-			diffs++
+	isCore := func(line string) bool { return strings.HasPrefix(line, coreBook+"\t") }
+	var wantText, gotText, gotCore []string
+	for _, l := range readLines(t, "testdata/oracle-seed.tsv") {
+		if !isCore(l) {
+			wantText = append(wantText, l)
 		}
 	}
-	if diffs > 0 {
-		t.Fatalf("共 %d 行不一致", diffs)
+	got := dump(t, db)
+	for _, l := range got {
+		if isCore(l) {
+			gotCore = append(gotCore, l)
+		} else {
+			gotText = append(gotText, l)
+		}
 	}
+	compareLines(t, "课本", gotText, wantText)
+	if os.Getenv("UPDATE_CORE_SEED") != "" {
+		if err := os.WriteFile("testdata/core-seed.tsv", []byte(strings.Join(gotCore, "\n")+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	compareLines(t, coreBook, gotCore, readLines(t, "testdata/core-seed.tsv"))
+	want := append(wantText, gotCore...)
 
 	counts := map[string]int{}
 	for _, q := range []string{"User", "Book", "Unit", "Word", "UnitWord", "Classroom", "ClassMember", "Plan", "PlanUnit", "PlanTarget"} {
@@ -86,10 +124,39 @@ func TestSeedMatchesOracle(t *testing.T) {
 		db.QueryRow(fmt.Sprintf(`SELECT count(*) FROM "%s"`, q)).Scan(&n)
 		counts[q] = n
 	}
-	want2 := map[string]int{"User": 4, "Book": 6, "Unit": 66, "Word": 3809, "UnitWord": 4312, "Classroom": 1, "ClassMember": 2, "Plan": 1, "PlanUnit": 2, "PlanTarget": 1}
+	want2 := map[string]int{"User": 4, "Book": 6, "Unit": 66, "Word": 3730, "UnitWord": 4245, "Classroom": 1, "ClassMember": 2, "Plan": 1, "PlanUnit": 2, "PlanTarget": 1}
 	for k, v := range want2 {
 		if counts[k] != v {
 			t.Errorf("%s = %d, want %d", k, counts[k], v)
+		}
+	}
+
+	// spec 0007：系统词书里的拼写都已规整（短语里有意写的括号除外）；课本词与核心词汇共用 Word
+	rows, err := db.Query(`SELECT DISTINCT w."spelling" FROM "Word" w JOIN "UnitWord" uw ON uw."wordId" = w."id"
+		JOIN "Unit" u ON u."id" = uw."unitId" JOIN "Book" b ON b."id" = u."bookId" WHERE b."isSystem" = 1`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var sp string
+		rows.Scan(&sp)
+		if c, _, _ := vocabparser.CleanSpelling(sp); c != sp {
+			t.Errorf("拼写未规整：%q", sp)
+		}
+	}
+	rows.Close()
+	var coreDirty int
+	db.QueryRow(`SELECT count(*) FROM "Word" w JOIN "UnitWord" uw ON uw."wordId" = w."id" JOIN "Unit" u ON u."id" = uw."unitId"
+		JOIN "Book" b ON b."id" = u."bookId" WHERE b."name" = ? AND (w."spelling" GLOB '*[[(=/]*' OR w."spelling" LIKE '%（%')`, coreBook).Scan(&coreDirty)
+	if coreDirty != 0 {
+		t.Errorf("核心词汇里还有 %d 个带括号、斜杠、等号的拼写", coreDirty)
+	}
+	for _, sp := range []string{"awake", "fridge", "throw", "wolf"} {
+		var books int
+		db.QueryRow(`SELECT count(DISTINCT b."name") FROM "Word" w JOIN "UnitWord" uw ON uw."wordId" = w."id" JOIN "Unit" u ON u."id" = uw."unitId"
+			JOIN "Book" b ON b."id" = u."bookId" WHERE w."spelling" = ?`, sp).Scan(&books)
+		if books < 2 {
+			t.Errorf("%q 只出现在 %d 本书里，课本与核心词汇应共用同一个 Word", sp, books)
 		}
 	}
 

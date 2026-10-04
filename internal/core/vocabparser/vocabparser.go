@@ -141,6 +141,13 @@ func parseLine(raw string, lineNo int) ParsedEntry {
 	}
 	definition = jsTrim(definition)
 
+	// 拼写末尾的注释（spec 0007）：音标为空时用拆出的音标；注释在释义检查之后接到释义末尾，
+	// 免得只有注释的「（…）」让缺释义的行通过检查
+	spelling, cleanPhon, note := CleanSpelling(spelling)
+	if phonetic == "" {
+		phonetic = cleanPhon
+	}
+
 	typ := "word"
 	if wsRe.MatchString(spelling) {
 		typ = "phrase"
@@ -156,6 +163,7 @@ func parseLine(raw string, lineNo int) ParsedEntry {
 		status = StatusError
 	}
 	if status != StatusError {
+		definition = AppendNote(definition, note)
 		if phoneticInDf.MatchString(definition) {
 			issues = append(issues, "释义中含音标，可能两词粘连")
 		}

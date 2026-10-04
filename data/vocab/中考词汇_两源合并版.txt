@@ -193,10 +193,10 @@ bee /biː/ n. 蜜蜂
 beef /biːf/ n. 牛肉
 beer /bɪə(r)/ n. 啤酒
 before /bɪˈfɔː(r)/ prep. 在…以前；在…前面 ad. 以前 conj. 在…之前
-beg /beɡ/ v. 请求，乞求，乞讨 
+beg /beɡ/ v. 请求，乞求，乞讨
 beggar /ˈbɛgər/ n. 乞丐
 begin /bɪˈgɪn/ v. 开始
-begin(began,begun) /bɪˈɡɪn/  v. 开始,着手
+begin(began,begun) /bɪˈɡɪn/ v. 开始,着手
 beginner /bɪˈgɪnər/ n. 初学者
 beginning /bɪˈɡɪnɪŋ/ n. 开始，开端
 behavior /bɪˈheɪvjər/ n. 行为
@@ -342,7 +342,7 @@ bureau /ˈbjʊroʊ/ n. 局；办事处
 burglar /ˈbərglər/ n. 窃贼
 burial /ˈbɛriəl/ n. 埋葬
 burn /bərn/ v. 燃烧
-burn (-ed, -ed / burnt, burnt) /bɜːn/ v. 燃烧,着火;使烧焦;使晒黑 n. 烧伤;晒伤
+burn (-ed, -ed 或 burnt, burnt) /bɜːn/ v. 燃烧,着火;使烧焦;使晒黑 n. 烧伤;晒伤
 bury /ˈberɪ/ vt. 埋；葬
 bus /bʌs/ n. 公共汽车
 bus-stop //ˈbʌs stɒp// n. 公交车站
@@ -354,7 +354,7 @@ busy /ˈbɪzɪ/ a. 忙（碌）的
 but /bət, bʌt/ conj. 但是，可是 prep. 除了, 除……外
 butter /ˈbʌtə(r)/ n. 黄油，奶油
 butterfly /ˈbʌtəflaɪ/ n. 蝴蝶
-button /ˈbʌt(ə)n/ n. 纽扣；（电铃等的）按钮 v. 扣（纽扣） 
+button /ˈbʌt(ə)n/ n. 纽扣；（电铃等的）按钮 v. 扣（纽扣）
 buy /baɪ/ v. 购买
 buy (bought,bought) /baɪ/ vt. 买
 buyer /baɪər/ n. 买主
@@ -425,7 +425,7 @@ castle /ˈkæsəl/ n. 城堡
 cat /kæt/ n. 猫
 catalog /ˈkætəlɔg/ n. 目录
 catch /kæʧ/ v. 抓住
-catch(caught,caught) /kætʃ/ v. 接住；捉住；赶上；染上（疾病）
+catch(caught,caught) /kætʃ/ v. 接住；捉住；赶上；染上（疾病）
 category /ˈkætəˌgɔri/ n. 类别
 caterpillar /ˈkætəˌpɪlər/ n. 毛毛虫
 cathedral /kəˈθidrəl/ n. 大教堂
@@ -792,7 +792,7 @@ dream /drim/ v. 做梦；梦想
 dream (dreamt, dreamt 或-ed, -ed) /driːm/ n.& vt. 梦，梦想
 dress /dres/ n. 女服，连衣裙；(统指)服装；童装 v. 穿衣
 dried /draɪd/ adj. 干的；干燥的
-drink /drɪŋk/ n. 饮料；喝酒 
+drink /drɪŋk/ n. 饮料；喝酒
 drive /draɪv/ v. 驾驶
 drop /drɔp/ n.滴 v.掉下,落下,投递,放弃
 drought /draut/ n. 干旱
@@ -807,7 +807,7 @@ dust /dʌst/ n. 灰尘，尘土
 dustbin /ˈdʌstbɪn/ n. 垃圾箱
 duty /ˈdjuːtɪ/ n. 责任，义务
 dynasty /daineist/ n.王朝，朝代
-e-mail /iː-meɪl/ ]n. 电子邮件
+e-mail /iː-meɪl/ n. 电子邮件
 each /iːtʃ/ a.& pron. 每人,每个,每件
 ear /ɪə(r)/ n.耳朵.耳状物；听力，听觉
 early /ɜːlɪ/ a. 早的 ad. 早地
@@ -1574,7 +1574,7 @@ greenhouse /ˈgrinˌhaʊs/ n. 温室
 greenish /ˈgrinɪʃ/ adj. 带绿色的
 greens /grinz/ n. 绿叶蔬菜
 greet /ɡriːt/ vt. 问候；向…致敬
-grey / gray /ɡreɪ/ a. 灰色的；灰白的
+grey (gray) /ɡreɪ/ a. 灰色的；灰白的
 group /ɡruːp/ n. 组，群
 grow /groʊ/ v. 生长；种植
 grow (grew, grown) /ɡrəʊ/ v. 生长；发育；种植；变成
@@ -1792,7 +1792,7 @@ kitchen /ˈkɪtʃɪn/ n. 厨房
 kite /kaɪt/ n. 风筝
 knee /niː/ n. 膝盖
 knife /naɪf/ (复 knives) n. 小刀;匕首;刀片
-knock /nɔk/ n.& v. 敲；打；击 
+knock /nɔk/ n.& v. 敲；打；击
 know /noʊ/ v. 知道
 know(knew,known) /nəʊ/ v. 知道，了解；认识；懂得
 knowledge /ˈnɔlɪdʒ/ n. 知识，学问
@@ -1880,7 +1880,7 @@ lucky /ˈlʌkɪ/ a. 运气好，侥幸
 lukewarm /ˈlukˈwɔrm/ adj. 微温的
 lunch /lʌntʃ/ n. 午餐，午饭
 machine /məˈʃiːn/ n. 机器
-madam/ madame /ˈmædəm/ n. 夫人,女士
+madam (madame) /ˈmædəm/ n. 夫人,女士
 magazine /mæɡəˈziːn/ n. 杂志
 magic /ˈmædʒɪk/ a. 有魔力的
 mail /meɪl/ n. 邮政,邮递 v. (美)邮寄
@@ -1899,13 +1899,13 @@ mark /mɑːk/ n. 标记 vt. 标明,作记号于
 market /ˈmɑːkɪt/ n. 市场，集市
 marry /ˈmærɪ/ v.（使）成婚，结婚
 match /mætʃ/ vt. 使相配，使成对 n. 比赛，竞赛 n. 火柴
-mathematics =math / maths /mæθəˈmætɪks/ n.（常作单数用）数学, (英美口语) 数学
+mathematics = math, maths /mæθəˈmætɪks/ n.（常作单数用）数学, (英美口语) 数学
 matte /mæt/ adj. 哑光的
 matter /ˈmætə(r)/ n. 要紧事，要紧, 事情；问题 vi. 要紧，有重大关系
 May /meɪ/ n. 5月
 maybe /ˈmeɪbiː/ ad. 可能，大概，也许
 me /miː, mɪ/ pron. 我（宾格）
-meal /miːl/ n. 一餐（饭） 
+meal /miːl/ n. 一餐（饭）
 mean /min/ v. 意思是
 mean(meant,meant) /miːn/ vt. 意思,意指
 meaning /ˈmiːnɪŋ/ n. 意思，含意
@@ -2102,7 +2102,7 @@ own /əʊn/ a. 自己的 v. 拥有,所有
 owner /ˈəʊnə(r)/ n. 物主，所有人
 P.C.(缩) =personal computer /piːsiː/ 个人电脑
 P.E.(缩) =physical education /piːiː/ 体育
-p.m./pm, P.M. /PM /piːem/ n. 下午,午后
+p.m. (pm, P.M., PM) /piːem/ n. 下午,午后
 Pacific /pəˈsɪfɪk/ a. 太平洋的
 pack /pæk/ n. 包,捆;（猎犬、野兽的）一群 v. (为运输或储存而)打包
 packet /ˈpækɪt/ n. 小包裹，袋
@@ -2221,8 +2221,8 @@ pound /paund/ n. 磅；英镑
 pour /paʊ(r)/ vi. 倾泻，不断流出
 powerful /ˈpaʊərfəl/ adj. 强大的
 powerless /ˈpaʊərləs/ adj. 无力的
-practice(s)e /ˈpræktɪs/ n. 练习
-praise /preɪz/ n.& vt. 赞扬，表扬
+practice (practise) /ˈpræktɪs/ n. 练习
+praise /preɪz/ n.& vt. 赞扬，表扬
 predict /prɪˈdɪkt/ v. 预测
 prefer /prɪˈfəː (r)/ vt.宁愿（选择）,更喜欢
 prepare /prɪˈpeə(r)/ vt. 准备,预备,调制,配制
@@ -2485,7 +2485,7 @@ slippery /sˈlɪpəri/ adj. 滑的
 sloping /sˈloʊpɪŋ/ adj. 倾斜的
 slow /sləʊ/ ad. 慢慢地，缓慢地
 small /smɔːl/ a. 小的，少的
-smell (smelt, smelt / -ed,-ed) /smel/ v. 嗅，闻到；发气味 n. 气味
+smell (smelt, smelt 或 -ed,-ed) /smel/ v. 嗅，闻到；发气味 n. 气味
 smile /smaɪl/ n.& v. 微笑
 smoke /sməʊk/ n. 烟 v. 冒烟；吸烟
 smoked /smoʊkt/ adj. 熏制的
@@ -2582,7 +2582,7 @@ subject /ˈsʌbdʒɪkt/ n. 题目；主题；学科；主语；主体
 succeed /səkˈsiːd/ vi. 成功
 success /səkˈses/ n. 成功
 successful /səkˈsesfʊl/ a. 成功的,有成就的
-such /sʌtʃ/ ] ad. 那么 pron.（泛指）人，事物 a. 这样的，那样的
+such /sʌtʃ/ ad. 那么 pron.（泛指）人，事物 a. 这样的，那样的
 sudden /ˈsʌd(ə)n/ a. 突然的
 sugar /ˈʃʊɡə(r)/ n. 糖
 suggest /səˈdʒest; (US) sə ˈdʒest/ vt. 建议，提议
@@ -2606,7 +2606,7 @@ suppose /səˈpəʊz/ vt. 猜想,假定,料想
 sure /ʃʊə(r), ʃɔː(r)/ a. 确信，肯定 ad. (口语)的确，一定，当然
 surf /ˈsɜːf/ v. 冲浪
 surprise /səˈpraɪz/ vt. 使惊奇,使诧异 n. 惊奇,诧异
-sweater /ˈswetə(r)/ n. 厚运动衫，毛衣
+sweater /ˈswetə(r)/ n. 厚运动衫，毛衣
 sweep(swept,swept) /swiːp/ v. 扫除，扫
 sweet /swiːt/ n. 甜食;蜜饯;甜点;糖果;芳香 a. 甜的;可爱的;亲切的
 swim (swam, swum) /swɪm/ vi. 游泳,游 n. 游泳，游
@@ -2627,7 +2627,7 @@ task /tɑːsk; (US) tæsk/ n. 任务, 工作
 taste /teɪst/ n. 品尝, 尝味；味道 vt. 品尝, 尝味
 tasty /ˈteɪsti/ adj. 美味的
 taxi /ˈtæksɪ/ n. 出租汽车
-tea /tiː/ n. 茶；茶叶 
+tea /tiː/ n. 茶；茶叶
 teach(taught,taught) /tiː tʃ/ v. 教书,教
 teacher /ˈtiːtʃə(r)/ n. 教师，教员
 team /tiːm/ n. 队，组
@@ -2767,7 +2767,7 @@ twisted /tˈwɪstɪd/ adj. 扭曲的
 two /tuː/ num. 二
 type /ˈtaɪp/ vt. 打字 n. 种类,类型
 typical /taɪpɪkəl/ adj,典型的，有代表性的
-U.N./ UN(缩) = the United Nations /juː ˈən/ n. 联合国
+U.N. (UN, the United Nations) /juː ˈən/ n. 联合国
 umbrella /ʌmˈbrelə/ n. 雨伞
 uncertain /ənˈsərtən/ adj. 不确定的
 uncle /ˈʌŋk(ə)l/ n. 叔,伯,舅,姑夫,姨父
@@ -2882,7 +2882,7 @@ wide /waid/ a. 宽阔的
 wife /waɪf/ n. 妻子
 will /wɪl/ n. 意志, 遗嘱
 will (would) /wɪl/ v. 将,会(表示将来)；愿意，要
-win (won, won) /wɪn/ n. 获胜，赢得 
+win (won, won) /wɪn/ n. 获胜，赢得
 wind (wound,wound) /wɪnd/ vt. 缠，连带；蜿蜒，弯曲 n. 风
 window /ˈwɪndəʊ/ n. 窗户；计算机的窗
 windy /ˈwɪndɪ/ a. 有风的，多风的
