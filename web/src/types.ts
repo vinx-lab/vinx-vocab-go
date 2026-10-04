@@ -59,6 +59,10 @@ export interface TodayData {
   streak: number;
   learnedWords: number;
   stats: { newWords: number; reviewedWords: number; answers: number; minutes: number; newLeft: number; reviewLeft: number; pendingTests: number };
+  /** 今日计划里有单元所在的书不在我的目标词书内的计划（spec 0008，卡片标「不在目标词书内」） */
+  outsideTargetPlanIds?: string[];
+  /** 因班级未开放自主安排而暂停的自建计划数（spec 0008） */
+  pausedSelfPlans?: number;
 }
 
 // ---------------- 单词单 ----------------
@@ -341,8 +345,21 @@ export interface Plan {
   targetsMe: boolean;
   isSelfPlan: boolean;
   canEdit: boolean;
+  /** 学生自建的计划，因所在班级未开放自主安排而暂停（算出来的，status 不变；spec 0008） */
+  selfPlanPaused?: boolean;
+  /** 安排给我的计划有单元所在的书不在我的目标词书内（spec 0008） */
+  outsideTarget?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/** POST /plans/allowed-books：建计划页的单元选择范围（spec 0008） */
+export interface AllowedPlanBooks {
+  /** 为假时安排对象都没有目标词书，不约束 */
+  constrained: boolean;
+  books: TargetBook[];
+  /** 安排对象只有自己时，能否自建 */
+  selfPlanAllowed: boolean;
 }
 
 export interface PlanInput {
@@ -587,6 +604,8 @@ export interface ClassItem {
   memberCount: number;
   planCount: number;
   createdAt: string;
+  /** 是否允许学生自主安排计划（spec 0008） */
+  allowSelfPlan: boolean;
 }
 
 export interface ClassDetail {
@@ -597,6 +616,15 @@ export interface ClassDetail {
   teacher: { id: string; name: string };
   members: { id: string; name: string; email: string; joinedAt: string; managedByMe: boolean }[];
   plans: { id: string; name: string; kind: PlanKind; status: PlanStatus; newPerDay: number }[];
+  /** 是否允许学生自主安排计划（spec 0008） */
+  allowSelfPlan: boolean;
+}
+
+/** GET /classes/:id/self-plan-impact：关闭自主安排前的影响（spec 0008） */
+export interface SelfPlanImpact {
+  students: number;
+  selfPlans: number;
+  ownBooks: number;
 }
 
 export type StudentTodayStatus = "done" | "in-progress" | "not-started" | "no-plan";
@@ -628,9 +656,13 @@ export interface ClassOverview {
     activeDays7: number;
     /** 目标覆盖（spec 0003）：按学生自己的有效目标；没有目标为 null */
     coverage: ClassStudentCoverage | null;
+    /** 按学生自己的目标算时，目标里含自己追加的书（spec 0008） */
+    coverageIncludesOwn?: boolean;
   }[];
   hardWords: { wordId: string; spelling: string; definition: string; wrong: number; total: number; rate: number }[];
   activeByDay: { day: string; activeStudents: number; answers: number; accuracy: number | null }[];
+  /** 目标覆盖的口径（spec 0008）：class = 只按本班目标；student = 按每个学生自己的目标（含自选） */
+  coverageMode?: "class" | "student";
 }
 
 // ---------------- 目标词书与覆盖进度（spec 0003） ----------------
@@ -644,13 +676,24 @@ export type TargetSheetStatus = "untested" | "learning";
 export interface TargetBook {
   id: string;
   name: string;
+  /** 只在 /me/target-books 的 books 里：class 由班级设置（锁定），own 自己追加（spec 0008） */
+  source?: "class" | "own";
+  /** source 为 class 时，设置这本书的班级 */
+  classNames?: string[];
 }
 
-/** GET /me/target-books：source 为 class 时 classes 是所在班级，books 为班级目标的并集 */
+/**
+ * GET /me/target-books：source 为 class 时 classes 是所在班级，books 为班级目标的并集，
+ * 能追加时（canEditOwn）再并上自己追加的（spec 0008）
+ */
 export interface MyTargetBooks {
   source: "class" | "own" | "none";
   classes: { id: string; name: string }[];
   books: TargetBook[];
+  /** 自己设置的全部目标（含与班级重复、当前不生效的）；编辑时整体提交它 */
+  ownBooks: TargetBook[];
+  /** 能否追加自己的目标，同时也是能否自建计划 */
+  canEditOwn: boolean;
 }
 
 export interface CoverageCounts {

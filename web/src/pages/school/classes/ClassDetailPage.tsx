@@ -26,12 +26,13 @@ import { EmptyBlock, ErrorBlock, Loading, PageHeader } from "@/components/ui";
 import { ClassOverviewTab } from "./ClassOverviewTab";
 import { ClassMembersTab } from "./ClassMembersTab";
 import { ClassTargetsTab } from "./ClassTargetsTab";
+import { ClassSettingsTab } from "./ClassSettingsTab";
 
 const PLAN_KIND_LABEL: Record<PlanKind, string> = { daily: "每日学习", test: "检测" };
-const TAB_KEYS = ["overview", "members", "plans", "targets"] as const;
+const TAB_KEYS = ["overview", "members", "plans", "targets", "settings"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
-/** 班级详情：今日概览 / 成员 / 学习计划 / 目标词书 */
+/** 班级详情：今日概览 / 成员 / 学习计划 / 目标词书 / 设置 */
 export function ClassDetailPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
@@ -135,7 +136,7 @@ export function ClassDetailPage() {
         }
         extra={actions}
       >
-        {c.members.length} 名学生 · {c.plans.length} 个计划
+        {c.members.length} 名学生 · {c.plans.length} 个计划 · {c.allowSelfPlan ? "允许学生自主安排" : "不允许学生自主安排"}
       </PageHeader>
 
       <Tabs
@@ -146,6 +147,7 @@ export function ClassDetailPage() {
           { key: "members", label: `成员 ${c.members.length}`, children: <ClassMembersTab detail={c} /> },
           { key: "plans", label: "学习计划", children: <PlansTab detail={c} canAssign={can(identity, "plans.assign")} /> },
           { key: "targets", label: "目标词书", children: <ClassTargetsTab classId={id} editable={canUpdate} /> },
+          { key: "settings", label: "设置", children: <ClassSettingsTab detail={c} editable={canUpdate} /> },
         ]}
       />
 

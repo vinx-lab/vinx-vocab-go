@@ -26,8 +26,9 @@ type planTargetOwner struct {
 }
 
 type membership struct {
-	ClassID   string
-	TeacherID string
+	ClassID       string
+	TeacherID     string
+	AllowSelfPlan bool
 }
 
 // LoadPlansForLearners 批量加载多个学生当前可学的计划（含范围词表，同一计划的范围只展开一次）。
@@ -35,6 +36,9 @@ type membership struct {
 // 计划对某学生生效的条件：status=active、在日期窗口内，且
 //   - 通过班级安排：学生当前仍是该班成员；
 //   - 直接安排给学生：本人创建，或创建者是管理员，或学生当前仍在创建者所带的班级里（退班后老师的直接安排随之失效）。
+//
+// 学生自建、只安排给自己的计划，在他的有效自主为否（所在任一班级不允许自主安排）时不生效——
+// 算出来的暂停（spec 0008 §5），不改 status；个人版（ctx 上的版本，见 WithEdition）不看班级，永远允许。
 //
 // planID 非空时只考虑该计划（旧 loadPlansForLearners(userIds, day, planId?)）。
 func LoadPlansForLearners(ctx context.Context, q store.Querier, userIDs []string, day string, planID string) (map[string][]LearnerPlan, error) {
@@ -46,7 +50,7 @@ func LoadPlansForLearners(ctx context.Context, q store.Querier, userIDs []string
 		return result, nil
 	}
 
-	memRows, err := q.QueryContext(ctx, `SELECT m."userId", m."classId", c."teacherId" FROM "ClassMember" m JOIN "Classroom" c ON c."id" = m."classId" WHERE m."userId" IN (`+store.Placeholders(len(userIDs))+`)`, store.Args(userIDs)...)
+	memRows, err := q.QueryContext(ctx, `SELECT m."userId", m."classId", c."teacherId", c."allowSelfPlan" FROM "ClassMember" m JOIN "Classroom" c ON c."id" = m."classId" WHERE m."userId" IN (`+store.Placeholders(len(userIDs))+`)`, store.Args(userIDs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -54,11 +58,12 @@ func LoadPlansForLearners(ctx context.Context, q store.Querier, userIDs []string
 	classIDSet := map[string]bool{}
 	for memRows.Next() {
 		var userID, classID, teacherID string
-		if err := memRows.Scan(&userID, &classID, &teacherID); err != nil {
+		var allow bool
+		if err := memRows.Scan(&userID, &classID, &teacherID, &allow); err != nil {
 			memRows.Close()
 			return nil, err
 		}
-		membershipsByUser[userID] = append(membershipsByUser[userID], membership{ClassID: classID, TeacherID: teacherID})
+		membershipsByUser[userID] = append(membershipsByUser[userID], membership{ClassID: classID, TeacherID: teacherID, AllowSelfPlan: allow})
 		classIDSet[classID] = true
 	}
 	if err := memRows.Err(); err != nil {
@@ -160,6 +165,16 @@ func LoadPlansForLearners(ctx context.Context, q store.Querier, userIDs []string
 	}
 	unitRows.Close()
 
+	useClasses := classesApplyIn(ctx)
+	selfAllowed := make(map[string]bool, len(userIDs))
+	for _, u := range userIDs {
+		allows := []bool{}
+		for _, m := range membershipsByUser[u] {
+			allows = append(allows, m.AllowSelfPlan)
+		}
+		selfAllowed[u] = !useClasses || core.SelfPlanAllowed(allows)
+	}
+
 	for _, p := range plans {
 		if !core.IsPlanInWindow(core.PlanWindow{StartDate: p.startDate, EndDate: p.endDate}, day) {
 			continue
@@ -181,6 +196,9 @@ func LoadPlansForLearners(ctx context.Context, q store.Querier, userIDs []string
 		}
 		targets := targetsByPlan[p.id]
 		for _, userID := range userIDs {
+			if !selfAllowed[userID] && isSelfPlanOf(p.creatorID, userID, targets) {
+				continue // 算出来的暂停
+			}
 			mine := membershipsByUser[userID]
 			viaClass := false
 			for _, t := range targets {

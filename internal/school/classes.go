@@ -62,13 +62,15 @@ type ClassRow struct {
 	Archived   bool       `json:"archived"`
 	CreatedAt  store.Time `json:"createdAt"`
 	UpdatedAt  store.Time `json:"updatedAt"`
+	// AllowSelfPlan 是否允许学生自主安排计划（spec 0008）。
+	AllowSelfPlan bool `json:"allowSelfPlan"`
 }
 
 // GetClassRow 按 id 取班级；不存在返回 (nil, nil)。
 func GetClassRow(ctx context.Context, q store.Querier, id string) (*ClassRow, error) {
 	var c ClassRow
-	err := q.QueryRowContext(ctx, `SELECT "id","name","teacherId","inviteCode","archived","createdAt","updatedAt" FROM "Classroom" WHERE "id" = ?`, id).
-		Scan(&c.ID, &c.Name, &c.TeacherID, &c.InviteCode, &c.Archived, &c.CreatedAt, &c.UpdatedAt)
+	err := q.QueryRowContext(ctx, `SELECT "id","name","teacherId","inviteCode","archived","createdAt","updatedAt","allowSelfPlan" FROM "Classroom" WHERE "id" = ?`, id).
+		Scan(&c.ID, &c.Name, &c.TeacherID, &c.InviteCode, &c.Archived, &c.CreatedAt, &c.UpdatedAt, &c.AllowSelfPlan)
 	if store.IsNoRows(err) {
 		return nil, nil
 	}
@@ -89,6 +91,8 @@ type ClassListItem struct {
 	MemberCount int        `json:"memberCount"`
 	PlanCount   int        `json:"planCount"`
 	CreatedAt   store.Time `json:"createdAt"`
+	// AllowSelfPlan 是否允许学生自主安排计划（spec 0008）。
+	AllowSelfPlan bool `json:"allowSelfPlan"`
 }
 
 // ListClasses 管理员看全部，老师看自己的；未归档在前、新建在前。
@@ -100,7 +104,7 @@ func ListClasses(ctx context.Context, q store.Querier, a *service.Actor) ([]Clas
 	rows, err := q.QueryContext(ctx, `SELECT c."id",c."name",c."inviteCode",c."archived",c."teacherId",u."name",
 		(SELECT count(*) FROM "ClassMember" m WHERE m."classId" = c."id"),
 		(SELECT count(*) FROM "PlanTarget" t WHERE t."classId" = c."id"),
-		c."createdAt"
+		c."createdAt", c."allowSelfPlan"
 		FROM "Classroom" c JOIN "User" u ON u."id" = c."teacherId" `+where+`
 		ORDER BY c."archived" ASC, c."createdAt" DESC, c.rowid DESC`, args...)
 	if err != nil {
@@ -110,7 +114,7 @@ func ListClasses(ctx context.Context, q store.Querier, a *service.Actor) ([]Clas
 	out := []ClassListItem{}
 	for rows.Next() {
 		var c ClassListItem
-		if err := rows.Scan(&c.ID, &c.Name, &c.InviteCode, &c.Archived, &c.TeacherID, &c.TeacherName, &c.MemberCount, &c.PlanCount, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.InviteCode, &c.Archived, &c.TeacherID, &c.TeacherName, &c.MemberCount, &c.PlanCount, &c.CreatedAt, &c.AllowSelfPlan); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -118,8 +122,8 @@ func ListClasses(ctx context.Context, q store.Querier, a *service.Actor) ([]Clas
 	return out, rows.Err()
 }
 
-// CreateClass 建班（班主任为当前操作者）。
-func CreateClass(ctx context.Context, db *store.DB, now time.Time, teacherID, name string) (*ClassRow, error) {
+// CreateClass 建班（班主任为当前操作者）；allowSelfPlan 是否允许学生自主安排计划（spec 0008）。
+func CreateClass(ctx context.Context, db *store.DB, now time.Time, teacherID, name string, allowSelfPlan bool) (*ClassRow, error) {
 	var out *ClassRow
 	err := db.Tx(ctx, func(tx *sql.Tx) error {
 		code, err := UniqueInviteCode(ctx, tx)
@@ -128,8 +132,8 @@ func CreateClass(ctx context.Context, db *store.DB, now time.Time, teacherID, na
 		}
 		id := store.NewID()
 		ts := store.NewTime(now)
-		if _, err := tx.ExecContext(ctx, `INSERT INTO "Classroom" ("id","name","teacherId","inviteCode","archived","createdAt","updatedAt") VALUES (?,?,?,?,0,?,?)`,
-			id, name, teacherID, code, ts, ts); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO "Classroom" ("id","name","teacherId","inviteCode","archived","createdAt","updatedAt","allowSelfPlan") VALUES (?,?,?,?,0,?,?,?)`,
+			id, name, teacherID, code, ts, ts, allowSelfPlan); err != nil {
 			return err
 		}
 		out, err = GetClassRow(ctx, tx, id)
@@ -140,8 +144,9 @@ func CreateClass(ctx context.Context, db *store.DB, now time.Time, teacherID, na
 
 // ClassPatch 部分更新；nil 表示不改。
 type ClassPatch struct {
-	Name     *string
-	Archived *bool
+	Name          *string
+	Archived      *bool
+	AllowSelfPlan *bool
 }
 
 // UpdateClass 改名 / 归档（updatedAt 总会刷新，与 Prisma 一致）。
@@ -155,6 +160,10 @@ func UpdateClass(ctx context.Context, q store.Querier, now time.Time, id string,
 	if p.Archived != nil {
 		sets += `, "archived" = ?`
 		args = append(args, *p.Archived)
+	}
+	if p.AllowSelfPlan != nil {
+		sets += `, "allowSelfPlan" = ?`
+		args = append(args, *p.AllowSelfPlan)
 	}
 	args = append(args, id)
 	if _, err := q.ExecContext(ctx, `UPDATE "Classroom" SET `+sets+` WHERE "id" = ?`, args...); err != nil {
@@ -220,14 +229,16 @@ type ClassDetail struct {
 	Teacher    ClassTeacher      `json:"teacher"`
 	Members    []ClassMemberView `json:"members"`
 	Plans      []ClassPlanView   `json:"plans"`
+	// AllowSelfPlan 是否允许学生自主安排计划（spec 0008）。
+	AllowSelfPlan bool `json:"allowSelfPlan"`
 }
 
 // GetClassDetail 班级详情：成员按入班时间先后，计划按安排先后。班级不存在 → NOT_FOUND。
 func GetClassDetail(ctx context.Context, q store.Querier, a *service.Actor, id string) (*ClassDetail, error) {
 	var d ClassDetail
-	err := q.QueryRowContext(ctx, `SELECT c."id",c."name",c."inviteCode",c."archived",u."id",u."name"
+	err := q.QueryRowContext(ctx, `SELECT c."id",c."name",c."inviteCode",c."archived",u."id",u."name",c."allowSelfPlan"
 		FROM "Classroom" c JOIN "User" u ON u."id" = c."teacherId" WHERE c."id" = ?`, id).
-		Scan(&d.ID, &d.Name, &d.InviteCode, &d.Archived, &d.Teacher.ID, &d.Teacher.Name)
+		Scan(&d.ID, &d.Name, &d.InviteCode, &d.Archived, &d.Teacher.ID, &d.Teacher.Name, &d.AllowSelfPlan)
 	if store.IsNoRows(err) {
 		return nil, httpx.NotFound("班级不存在")
 	}

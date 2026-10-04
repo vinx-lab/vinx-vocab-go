@@ -46,8 +46,10 @@ type ClassStudentRow struct {
 	Accuracy7d    core.Accuracy     `json:"accuracy7d"`
 	Minutes7d     int               `json:"minutes7d"`
 	ActiveDays7   int               `json:"activeDays7"`
-	// Coverage 目标覆盖（spec 0003）：按学生自己的有效目标（所在全部班级目标的并集）；没有目标为 null。
+	// Coverage 目标覆盖（spec 0003）；口径见 ClassOverviewView.CoverageMode（spec 0008）。没有目标为 null。
 	Coverage *ClassStudentCoverage `json:"coverage"`
+	// CoverageIncludesOwn 按学生自己的目标算时，目标里含自己追加的书（界面标「含自选」）。
+	CoverageIncludesOwn bool `json:"coverageIncludesOwn"`
 }
 
 // ClassOverviewSummary 全班今日汇总。
@@ -82,6 +84,9 @@ type ClassOverviewView struct {
 	Students    []ClassStudentRow    `json:"students"`
 	HardWords   []ClassHardWord      `json:"hardWords"`
 	ActiveByDay []ClassActiveDay     `json:"activeByDay"`
+	// CoverageMode 目标覆盖的口径（spec 0008）：class = 只按本班目标（班级不允许自主），
+	// student = 按每个学生自己的有效目标（含自选，班级允许自主）。
+	CoverageMode string `json:"coverageMode"`
 }
 
 type userAnswerFact struct {
@@ -98,7 +103,8 @@ func ClassOverview(ctx context.Context, q store.Querier, loc *time.Location, now
 	since14 := core.AddDays(day, -13)
 
 	var v ClassOverviewView
-	err := q.QueryRowContext(ctx, `SELECT "id","name","inviteCode" FROM "Classroom" WHERE "id" = ?`, classID).Scan(&v.Class.ID, &v.Class.Name, &v.Class.InviteCode)
+	var allowSelf bool
+	err := q.QueryRowContext(ctx, `SELECT "id","name","inviteCode","allowSelfPlan" FROM "Classroom" WHERE "id" = ?`, classID).Scan(&v.Class.ID, &v.Class.Name, &v.Class.InviteCode, &allowSelf)
 	if store.IsNoRows(err) {
 		return nil, httpx.NotFound("班级不存在")
 	}
@@ -199,7 +205,11 @@ func ClassOverview(ctx context.Context, q store.Querier, loc *time.Location, now
 	if err != nil {
 		return nil, err
 	}
-	coverage, err := classCoverage(ctx, q, userIDs)
+	v.CoverageMode = CoverageModeStudent
+	if !allowSelf {
+		v.CoverageMode = CoverageModeClass
+	}
+	coverage, includesOwn, err := classCoverage(ctx, q, classID, v.CoverageMode, userIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +272,7 @@ func ClassOverview(ctx context.Context, q store.Querier, loc *time.Location, now
 				Answers: len(todayAnswers), Minutes: core.ActiveMinutes(todayAnswers),
 			},
 			Accuracy7d: core.AccuracyOf(mine7), Minutes7d: core.ActiveMinutes(mine7), ActiveDays7: activeDays7,
-			Coverage: coverage[m.id],
+			Coverage: coverage[m.id], CoverageIncludesOwn: includesOwn[m.id],
 		})
 	}
 

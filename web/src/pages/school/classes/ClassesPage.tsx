@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import { Button, Form, Input, Modal, PlusOutlined, Tag, TeamOutlined, useApp } from "@/ui";
+import { Button, Form, Input, Modal, PlusOutlined, Radio, Tag, TeamOutlined, useApp } from "@/ui";
 import { useMutation, useQuery, useQueryClient } from "@/lib/query";
 import { useIdentity } from "@/lib/auth";
 import { Link, useNavigate } from "@/lib/router";
@@ -8,6 +8,7 @@ import { can } from "@/lib/perms";
 import type { ClassItem, Paged } from "@/types";
 import { EmptyBlock, ErrorBlock, Loading, PageHeader } from "@/components/ui";
 import { InviteCode } from "./shared";
+import { SELF_PLAN_OPTIONS } from "./selfPlan";
 
 /** 班级列表 */
 export function ClassesPage() {
@@ -19,12 +20,12 @@ export function ClassesPage() {
   const canCreate = can(identity, "classes");
 
   const [open, setOpen] = useState(false);
-  const [form] = Form.useForm<{ name: string }>();
+  const [form] = Form.useForm<{ name: string; allowSelfPlan: boolean }>();
 
   const query = useQuery({ queryKey: ["classes", "list"], queryFn: () => api.get<Paged<ClassItem>>("/classes") });
 
   const create = useMutation({
-    mutationFn: (name: string) => api.post<{ id: string }>("/classes", { name }),
+    mutationFn: (v: { name: string; allowSelfPlan: boolean }) => api.post<{ id: string }>("/classes", v),
     onSuccess: async (cls) => {
       message.success("班级已创建");
       setOpen(false);
@@ -100,9 +101,18 @@ export function ClassesPage() {
         cancelText="取消"
         destroyOnHidden
       >
-        <Form form={form} layout="vertical" onFinish={(v) => create.mutate(v.name.trim())} preserve={false}>
+        <Form form={form} layout="vertical" onFinish={(v) => create.mutate({ name: v.name.trim(), allowSelfPlan: v.allowSelfPlan })} preserve={false}>
           <Form.Item name="name" label="班级名称" rules={[{ required: true, whitespace: true, message: "请输入班级名称" }, { max: 40, message: "名称过长" }]}>
             <Input placeholder="如：七年级 3 班" autoFocus maxLength={40} />
+          </Form.Item>
+          {/* spec 0008：建班时必须选一次，没有默认值；以后可在班级「设置」里改 */}
+          <Form.Item
+            name="allowSelfPlan"
+            label="学生能否自己安排计划"
+            rules={[{ required: true, message: "请选择是否允许学生自主安排计划" }]}
+            extra="以后可以在班级的「设置」里修改。"
+          >
+            <Radio.Group aria-label="学生能否自己安排计划" style={{ display: "grid", gap: 8 }} options={SELF_PLAN_OPTIONS} />
           </Form.Item>
         </Form>
       </Modal>

@@ -19,9 +19,12 @@ import (
 type classBody struct {
 	Name     httpx.Opt[string] `json:"name"`
 	Archived httpx.Opt[bool]   `json:"archived"`
+	// AllowSelfPlan 是否允许学生自主安排计划（spec 0008）：可选，建班缺省为 true（旧客户端不受影响）。
+	AllowSelfPlan httpx.Opt[bool] `json:"allowSelfPlan"`
 
-	name     *string
-	archived *bool
+	name          *string
+	archived      *bool
+	allowSelfPlan *bool
 }
 
 type classPatchBody classBody
@@ -38,6 +41,12 @@ func validateClass(v *httpx.V, b *classBody, partial bool) {
 		a := v.OptBool("archived", b.Archived, false)
 		if !b.Archived.Null {
 			b.archived = &a
+		}
+	}
+	if b.AllowSelfPlan.Set && !v.Has("allowSelfPlan") {
+		a := v.OptBool("allowSelfPlan", b.AllowSelfPlan, true)
+		if !b.AllowSelfPlan.Null {
+			b.allowSelfPlan = &a
 		}
 	}
 }
@@ -128,7 +137,8 @@ func registerClasses(r *Router, d *Deps) {
 		if err != nil {
 			return err
 		}
-		cls, err := school.CreateClass(req.Context(), d.DB, d.Now(), actor.ID, *body.name)
+		allowSelfPlan := body.allowSelfPlan == nil || *body.allowSelfPlan
+		cls, err := school.CreateClass(req.Context(), d.DB, d.Now(), actor.ID, *body.name, allowSelfPlan)
 		if err != nil {
 			return err
 		}
@@ -158,7 +168,7 @@ func registerClasses(r *Router, d *Deps) {
 		if err != nil {
 			return err
 		}
-		cls, err := school.UpdateClass(req.Context(), d.DB, d.Now(), id, school.ClassPatch{Name: body.name, Archived: body.archived})
+		cls, err := school.UpdateClass(req.Context(), d.DB, d.Now(), id, school.ClassPatch{Name: body.name, Archived: body.archived, AllowSelfPlan: body.allowSelfPlan})
 		if err != nil {
 			return err
 		}
@@ -197,6 +207,20 @@ func registerClasses(r *Router, d *Deps) {
 			return err
 		}
 		v, err := service.ClassOverview(req.Context(), d.DB, d.Cfg.Location, d.Now(), id)
+		if err != nil {
+			return err
+		}
+		httpx.OK(w, v)
+		return nil
+	}, guard)
+
+	// 把「允许自主」改为「不允许」之前的影响统计（spec 0008）
+	cr.Get("/classes/{id}/self-plan-impact", func(w http.ResponseWriter, req *http.Request) error {
+		_, id, err := manage(req)
+		if err != nil {
+			return err
+		}
+		v, err := school.ClassSelfPlanImpact(req.Context(), d.DB, id)
 		if err != nil {
 			return err
 		}

@@ -23,6 +23,11 @@ const (
 type TargetBook struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// Source 只出现在 GET /me/target-books 的 books 里（spec 0008）：class 由班级设置（锁定），own 自己追加。
+	// 同一本书既在班级目标里又是自己加的，按班级算。
+	Source string `json:"source,omitempty"`
+	// ClassNames 设置这本书的班级（source 为 class 时）。
+	ClassNames []string `json:"classNames,omitempty"`
 }
 
 // TargetClass 提供目标的班级。
@@ -31,12 +36,17 @@ type TargetClass struct {
 	Name string `json:"name"`
 }
 
-// TargetBooksView GET /me/target-books：source 为 class 时 classes 是所在班级（books 为这些班级目标的并集），
-// 否则 classes 为空。
+// TargetBooksView GET /me/target-books：source 为 class 时 classes 是所在班级（books 为这些班级目标的并集，
+// 有效自主时再并上自己追加的），否则 classes 为空。
 type TargetBooksView struct {
 	Source  string        `json:"source"`
 	Classes []TargetClass `json:"classes"`
 	Books   []TargetBook  `json:"books"`
+	// OwnBooks 自己设置的全部目标（UserTargetBook 原样，含与班级重复的、当前不生效的），编辑时整体提交它。
+	OwnBooks []TargetBook `json:"ownBooks"`
+	// CanEditOwn 自己设置的目标是否生效、能否追加（spec 0008）：不在班里，或所在班级都允许自主安排。
+	// 同时也是「能否自建计划」（SelfPlanAllowed）。
+	CanEditOwn bool `json:"canEditOwn"`
 }
 
 // ------------------------------------------------------------------
@@ -132,11 +142,12 @@ func EffectiveTargets(ctx context.Context, q store.Querier, useClasses bool, use
 
 // effectiveTargetsBatch 一批用户的有效目标：
 //   - useClasses 且至少在一个班：所在班级（按入班顺序）目标的并集，source = class（班级都没设时 books 为空）；
+//     所在班级都允许自主安排时（spec 0008），再并上自己设的目标（与班级重复的按班级算）；
 //   - 否则自己设的目标：有则 own，没有则 none。
 func effectiveTargetsBatch(ctx context.Context, q store.Querier, useClasses bool, userIDs []string) (map[string]*TargetBooksView, error) {
 	out := map[string]*TargetBooksView{}
 	for _, id := range userIDs {
-		out[id] = &TargetBooksView{Source: TargetSourceNone, Classes: []TargetClass{}, Books: []TargetBook{}}
+		out[id] = &TargetBooksView{Source: TargetSourceNone, Classes: []TargetClass{}, Books: []TargetBook{}, OwnBooks: []TargetBook{}, CanEditOwn: true}
 	}
 	if len(userIDs) == 0 {
 		return out, nil
@@ -144,7 +155,7 @@ func effectiveTargetsBatch(ctx context.Context, q store.Querier, useClasses bool
 	ph, args := store.Placeholders(len(userIDs)), store.Args(userIDs)
 
 	if useClasses {
-		rows, err := q.QueryContext(ctx, `SELECT m."userId", c."id", c."name" FROM "ClassMember" m JOIN "Classroom" c ON c."id" = m."classId"
+		rows, err := q.QueryContext(ctx, `SELECT m."userId", c."id", c."name", c."allowSelfPlan" FROM "ClassMember" m JOIN "Classroom" c ON c."id" = m."classId"
 			WHERE m."userId" IN (`+ph+`) ORDER BY m."joinedAt", m.rowid`, args...)
 		if err != nil {
 			return nil, err
@@ -154,13 +165,15 @@ func effectiveTargetsBatch(ctx context.Context, q store.Querier, useClasses bool
 		for rows.Next() {
 			var uid string
 			var c TargetClass
-			if err := rows.Scan(&uid, &c.ID, &c.Name); err != nil {
+			var allow bool
+			if err := rows.Scan(&uid, &c.ID, &c.Name, &allow); err != nil {
 				rows.Close()
 				return nil, err
 			}
 			v := out[uid]
 			v.Source = TargetSourceClass
 			v.Classes = append(v.Classes, c)
+			v.CanEditOwn = v.CanEditOwn && allow // 多班取最严（core.SelfPlanAllowed）
 			if !seenClass[c.ID] {
 				seenClass[c.ID] = true
 				classIDs = append(classIDs, c.ID)
@@ -191,13 +204,17 @@ func effectiveTargetsBatch(ctx context.Context, q store.Querier, useClasses bool
 				return nil, err
 			}
 			for _, v := range out {
-				seen := map[string]bool{}
+				idx := map[string]int{}
 				for _, c := range v.Classes {
 					for _, b := range byClass[c.ID] {
-						if !seen[b.ID] {
-							seen[b.ID] = true
-							v.Books = append(v.Books, b)
+						if i, ok := idx[b.ID]; ok {
+							v.Books[i].ClassNames = append(v.Books[i].ClassNames, c.Name)
+							continue
 						}
+						idx[b.ID] = len(v.Books)
+						b.Source = TargetSourceClass
+						b.ClassNames = []string{c.Name}
+						v.Books = append(v.Books, b)
 					}
 				}
 			}
@@ -217,13 +234,46 @@ func effectiveTargetsBatch(ctx context.Context, q store.Querier, useClasses bool
 			return nil, err
 		}
 		v := out[uid]
-		if v.Source == TargetSourceClass {
+		v.OwnBooks = append(v.OwnBooks, b)
+		if !v.CanEditOwn {
+			continue // 班级不允许自主：自己设的保留但不生效
+		}
+		dup := false
+		for _, x := range v.Books {
+			if x.ID == b.ID {
+				dup = true
+				break
+			}
+		}
+		if dup {
 			continue
 		}
-		v.Source = TargetSourceOwn
+		if v.Source == TargetSourceNone {
+			v.Source = TargetSourceOwn
+		}
+		b.Source = TargetSourceOwn
 		v.Books = append(v.Books, b)
 	}
 	return out, rows.Err()
+}
+
+// TargetBookIDs 有效目标的词书 id。
+func (v *TargetBooksView) TargetBookIDs() []string {
+	ids := make([]string, len(v.Books))
+	for i, b := range v.Books {
+		ids[i] = b.ID
+	}
+	return ids
+}
+
+// IncludesOwn 有效目标里有自己追加的书（班级概览「含自选」）。
+func (v *TargetBooksView) IncludesOwn() bool {
+	for _, b := range v.Books {
+		if b.Source == TargetSourceOwn {
+			return true
+		}
+	}
+	return false
 }
 
 // ------------------------------------------------------------------
@@ -267,6 +317,11 @@ func coverageBatch(ctx context.Context, q store.Querier, useClasses bool, userID
 	if err != nil {
 		return nil, err
 	}
+	return coverageBatchFor(ctx, q, targets, userIDs)
+}
+
+// coverageBatchFor 按给定的目标（每个用户一份）算覆盖状态；班级概览按班级口径时所有人用同一份班级目标（spec 0008）。
+func coverageBatchFor(ctx context.Context, q store.Querier, targets map[string]*TargetBooksView, userIDs []string) (map[string]*userCoverage, error) {
 	out := map[string]*userCoverage{}
 	bookSet := map[string]bool{}
 	bookIDs := []string{}
@@ -458,11 +513,42 @@ type ClassStudentCoverage struct {
 	SelfGradedRatio *float64 `json:"selfGradedRatio"`
 }
 
-// classCoverage 班级概览：每个学生按自己的有效目标（所在全部班级的并集）；没有目标为 nil。
-func classCoverage(ctx context.Context, q store.Querier, userIDs []string) (map[string]*ClassStudentCoverage, error) {
-	m, err := coverageBatch(ctx, q, true, userIDs)
+// 班级概览「目标覆盖」的口径（spec 0008 §8）。
+const (
+	// CoverageModeClass 班级不允许自主：只按这个班的目标算，全班同一个分母。
+	CoverageModeClass = "class"
+	// CoverageModeStudent 班级允许自主：按每个学生自己的有效目标（含自选）算。
+	CoverageModeStudent = "student"
+)
+
+// classCoverage 班级概览的目标覆盖：mode 为 class 时每个学生都按 classID 的目标算，
+// 否则按各自的有效目标；没有目标为 nil。includesOwn 是有效目标里含自选书的学生。
+func classCoverage(ctx context.Context, q store.Querier, classID, mode string, userIDs []string) (map[string]*ClassStudentCoverage, map[string]bool, error) {
+	var targets map[string]*TargetBooksView
+	includesOwn := map[string]bool{}
+	if mode == CoverageModeClass {
+		books, err := ClassTargetBooks(ctx, q, classID)
+		if err != nil {
+			return nil, nil, err
+		}
+		targets = map[string]*TargetBooksView{}
+		for _, id := range userIDs {
+			targets[id] = &TargetBooksView{Source: TargetSourceClass, Classes: []TargetClass{}, Books: books, OwnBooks: []TargetBook{}}
+		}
+	} else {
+		var err error
+		if targets, err = effectiveTargetsBatch(ctx, q, true, userIDs); err != nil {
+			return nil, nil, err
+		}
+		for id, t := range targets {
+			if t.IncludesOwn() {
+				includesOwn[id] = true
+			}
+		}
+	}
+	m, err := coverageBatchFor(ctx, q, targets, userIDs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	out := map[string]*ClassStudentCoverage{}
 	for id, c := range m {
@@ -478,7 +564,7 @@ func classCoverage(ctx context.Context, q store.Querier, userIDs []string) (map[
 		}
 		out[id] = &ClassStudentCoverage{Target: total.Target, Tested: total.Tested, Learning: total.Learning, SelfGraded: self, SelfGradedRatio: ratio}
 	}
-	return out, nil
+	return out, includesOwn, nil
 }
 
 // targetWordIDs 目标词（bookId 非空时只取这本书；须在目标里，否则 404）按顺序列出，status 非空时只取该状态。

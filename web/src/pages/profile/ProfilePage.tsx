@@ -1,4 +1,4 @@
-import { Button, Card, Col, Form, Input, List, Popconfirm, Radio, Row, useApp, BgColorsOutlined, BookOutlined, TeamOutlined } from "@/ui";
+import { Button, Card, Col, Form, Input, List, Popconfirm, Radio, Row, Tag, useApp, BgColorsOutlined, BookOutlined, TeamOutlined } from "@/ui";
 import { TargetBooksEditor } from "@/pages/coverage/components";
 import { ROLE_LABEL, THEME_PREFS, type ThemePref } from "@vinx/shared";
 import { api, errorMessage } from "@/lib/api";
@@ -8,26 +8,43 @@ import { useThemePref } from "@/components/ThemeProvider";
 import { can } from "@/lib/perms";
 import { useApi, useMutation, invalidate } from "@/lib/query";
 import { PageHeader } from "@/components/ui";
-import type { MyClass, MyTargetBooks, Paged } from "@/types";
+import { useMyTargets } from "@/lib/targets";
+import type { MyClass, MyTargetBooks, Paged, TargetBook } from "@/types";
 
 /**
- * 我的目标词书（spec 0003）：有班级时用班级的目标，只读；没有班级时自己设置。
- * 有班级时自己设的不生效（保留，退出所有班级后恢复）。
+ * 我的目标词书（spec 0003 / 0008）：
+ * - 没有班级：自己设置；
+ * - 在班里且班级允许自主：班级的书锁定（「由班级 ×× 设置」，不能删除），下面可以追加自己的书，增删排序；
+ * - 在班里但班级不允许自主：只读班级目标，自己设的保留但不生效（退出所有班级或重新允许后恢复）。
  */
 function MyTargetBooksCard() {
   const { message } = useApp();
-  const q = useApi(["me", "target-books"], () => api.get<MyTargetBooks>("/me/target-books"));
+  const q = useMyTargets();
   const save = useMutation({
     mutationFn: (bookIds: string[]) => api.put<MyTargetBooks>("/me/target-books", { bookIds }),
     onSuccess: () => {
       message.success("目标词书已保存");
       void invalidate(["me", "target-books"]);
       void invalidate(["records"]);
+      void invalidate(["plans"]);
+      void invalidate(["today"]);
     },
     onError: (e) => message.error(errorMessage(e, "保存失败")),
   });
   const t = q.data;
   const fromClass = t?.source === "class";
+  const classBooks = t?.books.filter((b) => b.source === "class") ?? [];
+  const classIds = classBooks.map((b) => b.id);
+  // 自己设的书里与班级重复的不在「我追加的」里显示（按班级算），保存时原样带上，免得被删掉
+  const ownExtra = t?.ownBooks.filter((b) => !classIds.includes(b.id)) ?? [];
+  const ownHidden = t?.ownBooks.filter((b) => classIds.includes(b.id)).map((b) => b.id) ?? [];
+  const lockTag = (b: TargetBook) => (
+    <span title="由班级设置，不能删除">
+<Tag bordered={false} style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+      由班级 {(b.classNames ?? []).join("、")} 设置
+    </Tag>
+</span>
+  );
 
   return (
     <Card
@@ -39,15 +56,42 @@ function MyTargetBooksCard() {
     >
       {q.isLoading || !t ? (
         <div style={{ color: "var(--muted)" }}>{q.error ? errorMessage(q.error, "加载失败") : "加载中…"}</div>
-      ) : (
+      ) : !fromClass ? (
         <>
           <div style={{ marginBottom: 12, color: "var(--muted)", fontSize: 13 }}>
-            {fromClass
-              ? `由班级 ${t.classes.map((c) => c.name).join("、")} 设置。`
-              : "这一阶段要求自己覆盖的词书。今日页的目标进度和学习记录按这些词书统计。"}
+            这一阶段要求自己覆盖的词书。今日页的目标进度和学习记录按这些词书统计；自己建计划时只能从这些词书里选单元。
           </div>
-          <TargetBooksEditor value={t.books} readOnly={fromClass} saving={save.isPending} onSave={(ids) => save.mutate(ids)} />
+          <TargetBooksEditor value={t.books} saving={save.isPending} onSave={(ids) => save.mutate(ids)} />
         </>
+      ) : (
+        <div style={{ display: "grid", gap: 16 }}>
+          <div>
+            <div style={{ marginBottom: 8, color: "var(--muted)", fontSize: 13 }}>
+              由班级 {t.classes.map((c) => c.name).join("、")} 设置。
+            </div>
+            <TargetBooksEditor value={classBooks} readOnly rowExtra={lockTag} />
+          </div>
+          {t.canEditOwn ? (
+            <div>
+              <div style={{ marginBottom: 8, fontWeight: 600 }}>我追加的</div>
+              <div style={{ marginBottom: 8, color: "var(--muted)", fontSize: 13 }}>
+                班级允许自主安排：可以在班级目标之外追加词书，进度一起计入目标，也可以用它们自己建计划。
+              </div>
+              <TargetBooksEditor
+                value={ownExtra}
+                excludeIds={classIds}
+                emptyText="还没有追加的词书，从下面添加"
+                saving={save.isPending}
+                onSave={(ids) => save.mutate([...ids, ...ownHidden])}
+              />
+            </div>
+          ) : (
+            <div style={{ color: "var(--muted)", fontSize: 13 }}>
+              班级未开放自主安排，目标词书由老师设置。
+              {ownExtra.length > 0 && `你之前追加的 ${ownExtra.length} 本词书保留，暂不计入目标。`}
+            </div>
+          )}
+        </div>
       )}
     </Card>
   );

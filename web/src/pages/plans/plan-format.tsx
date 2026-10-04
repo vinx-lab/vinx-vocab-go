@@ -56,3 +56,25 @@ export function dateRangeText(startDate: string | null, endDate: string | null):
   if (!startDate && !endDate) return "立即开始 · 长期有效";
   return `${startDate ?? "立即开始"} 至 ${endDate ?? "长期"}`;
 }
+
+/** spec 0008 的计划标记：「班级未开放自主安排，暂停中」「不在目标词书内」 */
+export function PlanTargetTags({ plan }: { plan: Pick<Plan, "selfPlanPaused" | "outsideTarget" | "status"> }) {
+  return (
+    <>
+      {plan.selfPlanPaused && plan.status === "active" && (
+        <span title="所在班级不允许学生自主安排计划，这份自建计划暂停；老师重新允许后自动恢复">
+<Tag color="orange" bordered={false}>
+          班级未开放自主安排，暂停中
+        </Tag>
+</span>
+      )}
+      {plan.outsideTarget && (
+        <span title="计划里有单元所在的词书不在你的目标词书内，这部分进度不计入目标">
+<Tag bordered={false}>
+          不在目标词书内
+        </Tag>
+</span>
+      )}
+    </>
+  );
+}

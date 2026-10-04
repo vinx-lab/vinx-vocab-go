@@ -204,8 +204,12 @@ type todayView struct {
 	// GradedSheets 今天批改提交的默写单（spec 0006，今日页显示「已批改」；sheet 照旧只给待测 / 待批改的下一份）。
 	GradedSheets []service.GradedSheetToday `json:"gradedSheets"`
 	Streak       int                        `json:"streak"`
-	Stats          service.TodayStats     `json:"stats"`
-	LearnedWords   int                    `json:"learnedWords"`
+	Stats        service.TodayStats         `json:"stats"`
+	LearnedWords int                        `json:"learnedWords"`
+	// OutsideTargetPlanIDs 今日计划里有单元所在的书不在我的目标词书内的计划（spec 0008，卡片标「不在目标词书内」）。
+	OutsideTargetPlanIDs []string `json:"outsideTargetPlanIds"`
+	// PausedSelfPlans 因班级未开放自主安排而暂停的自建计划数（不在今日队列里，今日页提示一句）。
+	PausedSelfPlans int `json:"pausedSelfPlans"`
 }
 
 // sanitizedItem 进行中检测的题目（不含标准答案与例句）。
@@ -325,8 +329,16 @@ func registerStudy(r *Router, d *Deps) {
 		if err != nil {
 			return err
 		}
+		planIDs := make([]string, len(queue.Plans))
+		for i, p := range queue.Plans {
+			planIDs[i] = p.PlanID
+		}
+		outside, paused, err := service.TodayPlanFlags(ctx, d.DB, actor, planIDs)
+		if err != nil {
+			return err
+		}
 		httpx.OK(w, todayView{TodaySummary: queue, DrillAvailable: len(drill), Sheet: sheet, GradedSheets: graded, Streak: summary.Streak,
-			Stats: summary.Today, LearnedWords: summary.LearnedWords})
+			Stats: summary.Today, LearnedWords: summary.LearnedWords, OutsideTargetPlanIDs: outside, PausedSelfPlans: paused})
 		return nil
 	}, study)
 

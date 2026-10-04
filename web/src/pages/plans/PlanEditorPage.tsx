@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ComponentChildren } from "preact";
-import { useNavigate, useParams, useSearchParams } from "@/lib/router";
+import { Link, useNavigate, useParams, useSearchParams } from "@/lib/router";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@/lib/query";
 import { useIdentity } from "@/lib/auth";
-import { Button, Checkbox, Col, DatePicker, Divider, Empty, Input, InputNumber, Radio, Row, Segmented, Select, Space, Spin, Tag, useApp, CheckCircleFilled, TeamOutlined, UserOutlined } from "@/ui";
+import { Alert, Button, Checkbox, Col, DatePicker, Divider, Empty, Input, InputNumber, Radio, Row, Segmented, Select, Space, Spin, Tag, useApp, CheckCircleFilled, TeamOutlined, UserOutlined } from "@/ui";
 import dayjs from "dayjs";
 import { api, errorMessage } from "@/lib/api";
 import { can } from "@/lib/perms";
-import type { Book, BookDetail, ClassDetail, ClassItem, Mode, Paged, Plan, PlanInput, PlanKind } from "@/types";
+import type { AllowedPlanBooks, Book, BookDetail, ClassDetail, ClassItem, Mode, Paged, Plan, PlanInput, PlanKind } from "@/types";
 import { MODE_LABEL } from "@/types";
 import { ErrorBlock, Loading, PageHeader } from "@/components/ui";
 
@@ -106,6 +106,21 @@ export function PlanEditorPage() {
     enabled: canAssign && !!memberClassId,
   });
 
+  // 建计划只能从安排对象的目标词书里选（spec 0008）：自己 = 我的有效目标；班级 = 班级目标；学生 = 其有效目标；
+  // 多个对象取交集；目标都为空时不约束。没选对象时（给他人安排但还没选）先不约束。
+  const others = canAssign && targetMode !== "self";
+  const allowedKey = others ? `${[...classIds].sort().join(",")}:${[...userIds].sort().join(",")}` : "self";
+  const noTargetPicked = others && classIds.length === 0 && userIds.length === 0;
+  const allowedQuery = useQuery({
+    queryKey: ["plans", "allowed-books", allowedKey],
+    queryFn: () => api.post<AllowedPlanBooks>("/plans/allowed-books", others ? { targets: { classIds, userIds } } : {}),
+    enabled: !noTargetPicked && (!isEdit || canAssign || planQuery.data?.isSelfPlan === true),
+    placeholderData: keepPreviousData,
+  });
+  const allowed = noTargetPicked ? undefined : allowedQuery.data;
+  const constrained = !!allowed?.constrained;
+  const selfClosed = !isEdit && !others && allowed?.selfPlanAllowed === false;
+
   const sortedKey = useMemo(() => [...unitIds].sort().join(","), [unitIds]);
   const previewQuery = useQuery({
     queryKey: ["plans", "preview", sortedKey],
@@ -157,10 +172,23 @@ export function PlanEditorPage() {
     }
   }, [isEdit, planQuery.data, search]);
 
-  // 默认选中第一本词书
+  // 单元选择只列约束集合里的书；已选单元所在的书（编辑已有的超出目标的计划）也保留，标「不在目标词书内」
+  const selectedBookIds = useMemo(() => new Set(unitIds.map((u) => unitMeta[u]?.bookId).filter(Boolean) as string[]), [unitIds, unitMeta]);
+  const bookOptions = useMemo(() => {
+    const all = booksQuery.data?.items ?? [];
+    if (!constrained || !allowed) return all.map((b) => ({ book: b, outside: false }));
+    const ok = new Set(allowed.books.map((b) => b.id));
+    return all.filter((b) => ok.has(b.id) || selectedBookIds.has(b.id)).map((b) => ({ book: b, outside: !ok.has(b.id) }));
+  }, [booksQuery.data, constrained, allowed, selectedBookIds]);
+
+  // 默认选中第一本词书；约束变了、当前的书不再可选时换到第一本可选的
   useEffect(() => {
-    if (!activeBookId && booksQuery.data?.items.length) setActiveBookId(booksQuery.data.items[0].id);
-  }, [activeBookId, booksQuery.data]);
+    if (!booksQuery.data) return;
+    if (activeBookId && bookOptions.some((o) => o.book.id === activeBookId)) return;
+    if (activeBookId && !constrained) return;
+    const first = bookOptions[0]?.book.id;
+    if (first !== activeBookId) setActiveBookId(first);
+  }, [activeBookId, bookOptions, booksQuery.data, constrained]);
 
   // 载入词书详情时登记其单元信息（名称、顺序、词数），用于排序、芯片和自动命名
   useEffect(() => {
@@ -228,11 +256,11 @@ export function PlanEditorPage() {
   });
 
   function submit() {
+    if (selfClosed) return message.warning("班级未开放自主安排计划");
     if (unitIds.length === 0) return message.warning("请至少选择一个单元");
     if (modes.length === 0) return message.warning("至少选择一种题型");
     if (!name.trim()) return message.warning("请填写计划名称");
     if (startDate && endDate && endDate < startDate) return message.warning("结束日期不能早于开始日期");
-    const others = targetMode !== "self";
     if (canAssign && others && classIds.length === 0 && userIds.length === 0) return message.warning("请选择要安排的班级或学生");
 
     const body: Partial<PlanInput> = {
@@ -300,6 +328,32 @@ export function PlanEditorPage() {
             </Section>
 
             <Section index="1" title="学什么">
+              {selfClosed && (
+                <Alert type="error" showIcon style={{ marginBottom: 12 }} message="班级未开放自主安排计划" description="学习计划由老师布置；老师在班级设置里允许后，才能自己建计划。" />
+              )}
+              {/* 能布置计划的人给自己建时不提示「还没有设目标」：他们多半是来布置的，切到班级或学生后再按所选对象提示 */}
+              {allowed && !constrained && !(canAssign && !others) && (
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message="还没有设目标词书，学习进度不会计入目标"
+                  description={
+                    !others ? (
+                      <>
+                        先在「我的」里设好目标词书，建计划时就只列目标里的书。<Link to="/profile">去设置目标词书</Link>
+                      </>
+                    ) : targetMode === "class" && classIds.length === 1 ? (
+                      <>
+                        给班级设好目标词书后，建计划时只列目标里的书。<Link to={`/classes/${classIds[0]}?tab=targets`}>去设置班级目标词书</Link>
+                      </>
+                    ) : (
+                      "所选对象都还没有目标词书，可以从全部词书里选单元。"
+                    )
+                  }
+                />
+              )}
+              {constrained && <div style={{ marginBottom: 8 }}><Hint>只列{others ? "所选对象" : "我的"}目标词书里的书{others && classIds.length + userIds.length > 1 ? "（多个对象取共同的目标词书）" : ""}。</Hint></div>}
               <Row gutter={[12, 12]} align="middle">
                 <Col xs={24} sm={14}>
                   <Select
@@ -310,7 +364,8 @@ export function PlanEditorPage() {
                     onChange={setActiveBookId}
                     showSearch
                     optionFilterProp="label"
-                    options={(booksQuery.data?.items ?? []).map((b) => ({ value: b.id, label: `${b.name}${b.isSystem ? "（系统）" : ""}` }))}
+                    notFoundContent={constrained ? "目标词书里没有共同的书" : undefined}
+                    options={bookOptions.map(({ book: b, outside }) => ({ value: b.id, label: `${b.name}${b.isSystem ? "（系统）" : ""}${outside ? "（不在目标词书内）" : ""}` }))}
                   />
                 </Col>
                 <Col xs={24} sm={10} style={{ textAlign: "right" }}>
@@ -583,7 +638,7 @@ export function PlanEditorPage() {
               }
             />
             <Space style={{ marginTop: 16, width: "100%" }} direction="vertical">
-              <Button type="primary" size="large" block loading={save.isPending} onClick={submit}>
+              <Button type="primary" size="large" block loading={save.isPending} disabled={selfClosed} onClick={submit}>
                 {isEdit ? "保存修改" : "创建计划"}
               </Button>
               <Button block onClick={() => navigate(-1)}>

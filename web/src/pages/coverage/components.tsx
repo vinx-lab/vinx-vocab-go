@@ -1,4 +1,5 @@
 /** 目标词书与覆盖进度（spec 0003）的共用组件：三段进度条、目标词书编辑、记录页分书进度与词表 */
+import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { Button, DeleteOutlined, DownOutlined, HolderOutlined, Pagination, Segmented, Select, Tag, UpOutlined } from "@/ui";
 import { keepPreviousData, useQuery } from "@/lib/query";
@@ -43,18 +44,25 @@ export function coverageLine(c: Pick<CoverageCounts, "known" | "learning" | "unt
 
 /**
  * 目标词书编辑：从可见词书里添加，拖动（或上下按钮，手机上用）排序，保存时整体替换。
- * readOnly 时只列出词书。
+ * readOnly 时只列出词书。excludeIds 不出现在「添加词书」里（例如已由班级设置的书，spec 0008）；
+ * emptyText 为空列表时的提示；rowExtra 在每本书后面附加内容（如「由班级 ×× 设置」）。
  */
 export function TargetBooksEditor({
   value,
   readOnly,
   saving,
   onSave,
+  excludeIds,
+  emptyText,
+  rowExtra,
 }: {
   value: TargetBook[];
   readOnly?: boolean;
   saving?: boolean;
   onSave?: (bookIds: string[]) => void;
+  excludeIds?: string[];
+  emptyText?: string;
+  rowExtra?: (b: TargetBook) => ComponentChildren;
 }) {
   const [list, setList] = useState<TargetBook[]>(value);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -63,7 +71,7 @@ export function TargetBooksEditor({
 
   const books = useQuery({ queryKey: ["books", "all"], queryFn: () => api.get<Paged<Book>>("/books"), enabled: !readOnly });
   const dirty = list.map((b) => b.id).join(",") !== valueKey;
-  const options = (books.data?.items ?? []).filter((b) => !list.some((x) => x.id === b.id)).map((b) => ({ value: b.id, label: `${b.name}（${b.wordCount} 词）` }));
+  const options = (books.data?.items ?? []).filter((b) => !list.some((x) => x.id === b.id) && !excludeIds?.includes(b.id)).map((b) => ({ value: b.id, label: `${b.name}（${b.wordCount} 词）` }));
 
   const add = (id: string) => {
     const b = books.data?.items.find((x) => x.id === id);
@@ -74,7 +82,7 @@ export function TargetBooksEditor({
   return (
     <div style={{ display: "grid", gap: 12 }}>
       {list.length === 0 ? (
-        <div style={{ color: "var(--muted)", padding: "8px 0" }}>{readOnly ? "还没有设置目标词书" : "还没有目标词书，从下面添加"}</div>
+        <div style={{ color: "var(--muted)", padding: "8px 0" }}>{emptyText ?? (readOnly ? "还没有设置目标词书" : "还没有目标词书，从下面添加")}</div>
       ) : (
         <div style={{ border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
           {list.map((b, i) => (
@@ -99,6 +107,7 @@ export function TargetBooksEditor({
                 {i + 1}
               </span>
               <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span>
+              {rowExtra?.(b)}
               {!readOnly && (
                 <>
                   <Button size="small" type="text" icon={<UpOutlined />} aria-label={`上移 ${b.name}`} disabled={i === 0} onClick={() => move(i, i - 1)} />

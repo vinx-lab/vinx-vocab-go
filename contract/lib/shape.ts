@@ -85,13 +85,21 @@ export function expectShape(name: string, value: unknown) {
 const GO_ADDED: Record<string, string[]> = {
   // spec 0002：开发模式开关
   config: ["data.dev"],
-  // spec 0003：班级概览成员的目标覆盖
-  "class-overview": ["data.students[].coverage"],
-  "class-overview-empty": ["data.students[].coverage"],
+  // spec 0003：班级概览成员的目标覆盖；spec 0008：覆盖口径与「含自选」
+  "class-overview": ["data.students[].coverage", "data.coverageMode", "data.students[].coverageIncludesOwn"],
+  "class-overview-empty": ["data.students[].coverage", "data.coverageMode", "data.students[].coverageIncludesOwn"],
   // spec 0006：今日页今天已批改的默写单；单词单的格式与题目
-  "today-empty": ["data.gradedSheets"],
-  today: ["data.gradedSheets"],
-  "today-with-sheet": ["data.gradedSheets", "data.sheet.format", "data.sheet.itemCount"],
+  // spec 0008：今日页「不在目标词书内」的计划、暂停的自建计划数
+  "today-empty": ["data.gradedSheets", "data.outsideTargetPlanIds", "data.pausedSelfPlans"],
+  today: ["data.gradedSheets", "data.outsideTargetPlanIds", "data.pausedSelfPlans"],
+  "today-with-sheet": ["data.gradedSheets", "data.sheet.format", "data.sheet.itemCount", "data.outsideTargetPlanIds", "data.pausedSelfPlans"],
+  // spec 0008：班级「允许学生自主安排」；计划的「暂停中」「不在目标词书内」标记
+  "class-create": ["data.allowSelfPlan"],
+  "class-update": ["data.allowSelfPlan"],
+  "class-invite-code": ["data.allowSelfPlan"],
+  "class-detail": ["data.allowSelfPlan"],
+  "class-list": ["data.items[].allowSelfPlan"],
+  "plans-detail": ["data.selfPlanPaused", "data.outsideTarget"],
   "sheets-detail": ["data.format", "data.grading", "data.items"],
   "sheets-list": ["data.items[].format", "data.items[].itemCount"],
   "sheets-sources": ["data.learningSentences"],

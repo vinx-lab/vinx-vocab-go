@@ -31,6 +31,8 @@ export function ClassOverviewTab({ classId, onSetTargets }: { classId: string; o
   if (query.error || !query.data) return <ErrorBlock error={query.error} onRetry={() => query.refetch()} />;
   const o = query.data;
   const memberCount = o.class.memberCount;
+  // spec 0008：允许自主的班按每个学生自己的有效目标（含自选）算，不允许的班只按本班目标算
+  const perStudent = o.coverageMode === "student";
 
   const columns: ColumnType<StudentRow>[] = [
     {
@@ -39,7 +41,18 @@ export function ClassOverviewTab({ classId, onSetTargets }: { classId: string; o
       fixed: "left",
       width: 110,
       sorter: (a, b) => a.name.localeCompare(b.name, "zh-CN"),
-      render: (_, r) => <Link to={`/classes/${classId}/students/${r.userId}`}>{r.name}</Link>,
+      render: (_, r) => (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+          <Link to={`/classes/${classId}/students/${r.userId}`}>{r.name}</Link>
+          {perStudent && r.coverageIncludesOwn && (
+            <span title="目标覆盖含学生自己追加的目标词书">
+<Tag bordered={false} color="blue">
+              含自选
+            </Tag>
+</span>
+          )}
+        </span>
+      ),
     },
     {
       title: "今日状态",
@@ -83,9 +96,16 @@ export function ClassOverviewTab({ classId, onSetTargets }: { classId: string; o
       render: (_, r) => <span title={`近 7 天首答 ${r.accuracy7d.correct}/${r.accuracy7d.total} 题`}>{percent(r.accuracy7d.rate)}</span>,
     },
     {
-      title: "目标覆盖",
+      title: perStudent ? (
+        <span title="允许学生自主安排：每个学生按自己的目标词书统计（班级目标 + 自己追加的），分母可能不同">
+          目标覆盖
+          <div style={{ fontSize: 11, fontWeight: 400, color: "var(--muted)" }}>按学生自己的目标（含自选）</div>
+        </span>
+      ) : (
+        "目标覆盖"
+      ),
       key: "coverage",
-      width: 120,
+      width: perStudent ? 150 : 120,
       sorter: (a, b) => coverageRateOrder(a.coverage) - coverageRateOrder(b.coverage),
       render: (_, r) =>
         r.coverage ? (

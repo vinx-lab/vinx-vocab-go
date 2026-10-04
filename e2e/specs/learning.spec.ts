@@ -56,6 +56,8 @@ test.describe("学习主线：老师建班布置 → 学生入班学习 → 老�
     await teacher.goto("/classes");
     await teacher.getByRole("button", { name: /新建班级/ }).first().click();
     await teacher.getByLabel("班级名称").fill(className);
+    // spec 0008：建班时必须选一次是否允许学生自主安排
+    await teacher.getByRole("radio", { name: /^允许/ }).check();
     await teacher.getByRole("dialog").getByRole("button", { name: /确\s*定|创\s*建/ }).click();
     await teacher.waitForURL(/\/classes\/[^/]+$/);
     const classId = teacher.url().split("/").pop()!.split("?")[0];

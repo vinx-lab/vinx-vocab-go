@@ -7,7 +7,8 @@ import { api } from "@/lib/api";
 import { can } from "@/lib/perms";
 import type { Paged, Plan, PlanStatus } from "@/types";
 import { EmptyBlock, ErrorBlock, Loading, PageHeader } from "@/components/ui";
-import { PlanKindTag, PlanStatusTag, groupUnitsByBook, modesText, paceText, unitNamesText } from "./plan-format";
+import { PlanKindTag, PlanStatusTag, PlanTargetTags, groupUnitsByBook, modesText, paceText, unitNamesText } from "./plan-format";
+import { SELF_PLAN_CLOSED_TEXT, useMyTargets } from "@/lib/targets";
 
 type Scope = "all" | "mine" | "created";
 
@@ -22,7 +23,10 @@ export function PlansPage() {
     queryFn: () => api.get<Paged<Plan>>("/plans", { scope, ...(status ? { status } : {}) }),
   });
 
-  const canCreate = can(identity, "plans");
+  // spec 0008：班级未开放自主安排时，只能学老师布置的（能给别人布置的老师、管理员不受影响）
+  const targets = useMyTargets(can(identity, "plans") && !can(identity, "plans.assign"));
+  const selfClosed = !can(identity, "plans.assign") && targets.data?.canEditOwn === false;
+  const canCreate = can(identity, "plans") && !selfClosed;
   const filtered = scope !== "all" || !!status;
 
   return (
@@ -31,14 +35,15 @@ export function PlansPage() {
         eyebrow="Plans"
         title="学习计划"
         extra={
-          canCreate && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate("/plans/new")}>
+          can(identity, "plans") && (
+            <Button type="primary" icon={<PlusOutlined />} disabled={selfClosed} title={selfClosed ? SELF_PLAN_CLOSED_TEXT : undefined} onClick={() => navigate("/plans/new")}>
               新建计划
             </Button>
           )
         }
       >
         计划决定每天学哪些词、学多少、用什么题型练。
+        {selfClosed && <div style={{ marginTop: 4, color: "var(--muted)" }}>{SELF_PLAN_CLOSED_TEXT}。</div>}
       </PageHeader>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 16, alignItems: "center" }}>
@@ -131,6 +136,11 @@ function PlanCard({ plan, delay, onOpen }: { plan: Plan; delay: number; onOpen: 
           <PlanStatusTag status={plan.status} />
         </div>
       </div>
+      {(plan.selfPlanPaused || plan.outsideTarget) && (
+        <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
+          <PlanTargetTags plan={plan} />
+        </div>
+      )}
       <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 2 }}>{source}</div>
 
       <div style={{ marginTop: 10, color: "var(--ink-soft)", fontSize: 13, lineHeight: 1.7 }}>

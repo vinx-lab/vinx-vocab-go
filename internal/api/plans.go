@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"github.com/vinx-lab/vinx-vocab-go/internal/core"
 	"github.com/vinx-lab/vinx-vocab-go/internal/httpx"
 	"github.com/vinx-lab/vinx-vocab-go/internal/service"
+	"github.com/vinx-lab/vinx-vocab-go/internal/store"
 )
 
 // 学习计划（对应旧 routes/plans.ts）。
@@ -106,6 +108,28 @@ func (b *planPreviewBody) Validate(v *httpx.V) {
 	}
 	b.unitIDs = b.UnitIDs.Val
 	v.ArrayLen("unitIds", len(b.unitIDs), -1, 200, "", "")
+}
+
+// ===== POST /plans/allowed-books =====
+
+type planAllowedBooksBody struct {
+	Targets httpx.Opt[planTargetsBody] `json:"targets"`
+
+	targets service.PlanTargetsInput
+}
+
+func (b *planAllowedBooksBody) Validate(v *httpx.V) {
+	b.targets = validateTargets(v, "targets", b.Targets)
+}
+
+// annotatePlan 单个计划视图的 spec 0008 标记。
+func annotatePlan(ctx context.Context, q store.Querier, a *service.Actor, v *service.PlanView) error {
+	views := []service.PlanView{*v}
+	if err := service.AnnotatePlans(ctx, q, a, views); err != nil {
+		return err
+	}
+	*v = views[0]
+	return nil
 }
 
 // ===== POST /plans =====
@@ -298,6 +322,26 @@ func registerPlans(r *Router, d *Deps) {
 		return nil
 	}, auth.RequireCap(core.CapPlans))
 
+	// 建计划页的单元选择范围（spec 0008）：安排对象（缺省 = 自己）的目标词书交集；目标都为空时不约束
+	r.Post("/plans/allowed-books", func(w http.ResponseWriter, req *http.Request) error {
+		ctx := req.Context()
+		actor := auth.ActorFrom(ctx)
+		body, err := httpx.Decode[planAllowedBooksBody](req)
+		if err != nil {
+			return err
+		}
+		targets, err := service.ResolveTargets(ctx, d.DB, actor, body.targets)
+		if err != nil {
+			return err
+		}
+		res, err := service.AllowedPlanBooksFor(ctx, d.DB, actor, targets)
+		if err != nil {
+			return err
+		}
+		httpx.OK(w, res)
+		return nil
+	}, auth.RequireCap(core.CapPlans))
+
 	r.Post("/plans", func(w http.ResponseWriter, req *http.Request) error {
 		ctx := req.Context()
 		actor := auth.ActorFrom(ctx)
@@ -316,6 +360,13 @@ func registerPlans(r *Router, d *Deps) {
 			return err
 		}
 		body.in.Targets = targets
+		// spec 0008：班级不允许自主时不能自建；所选单元须落在安排对象的目标词书里
+		if err := service.AssertSelfPlanAllowed(ctx, d.DB, actor, targets); err != nil {
+			return err
+		}
+		if err := service.AssertPlanUnitsInTargets(ctx, d.DB, actor, body.in.UnitIDs, targets); err != nil {
+			return err
+		}
 		var plan *service.PlanView
 		err = d.DB.Tx(ctx, func(tx *sql.Tx) error {
 			row, err := service.CreatePlan(ctx, tx, d.Now(), actor.ID, body.in)
@@ -326,8 +377,10 @@ func registerPlans(r *Router, d *Deps) {
 			if err != nil {
 				return err
 			}
-			plan, err = service.SerializePlan(ctx, tx, row, actor, myClassIDs)
-			return err
+			if plan, err = service.SerializePlan(ctx, tx, row, actor, myClassIDs); err != nil {
+				return err
+			}
+			return annotatePlan(ctx, tx, actor, plan)
 		})
 		if err != nil {
 			return err
@@ -353,6 +406,9 @@ func registerPlans(r *Router, d *Deps) {
 		}
 		view, err := service.SerializePlan(ctx, d.DB, row, actor, myClassIDs)
 		if err != nil {
+			return err
+		}
+		if err := annotatePlan(ctx, d.DB, actor, view); err != nil {
 			return err
 		}
 		httpx.OK(w, view)
@@ -387,6 +443,32 @@ func registerPlans(r *Router, d *Deps) {
 			}
 			body.patch.Targets = &resolved
 		}
+		// spec 0008：只在改了单元范围（有新增的单元）时检查；只改节奏、题型、日期、对象不检查，
+		// 已有的超出目标的单元不受影响
+		if body.patch.UnitIDs != nil {
+			added, err := service.AddedPlanUnits(ctx, d.DB, id, body.patch.UnitIDs)
+			if err != nil {
+				return err
+			}
+			if len(added) > 0 {
+				targets := body.patch.Targets
+				if targets == nil {
+					t, err := service.PlanTargetsOf(ctx, d.DB, id)
+					if err != nil {
+						return err
+					}
+					targets = &t
+				}
+				if existing.CreatorID == actor.ID {
+					if err := service.AssertSelfPlanAllowed(ctx, d.DB, actor, *targets); err != nil {
+						return err
+					}
+				}
+				if err := service.AssertPlanUnitsInTargets(ctx, d.DB, actor, added, *targets); err != nil {
+					return err
+				}
+			}
+		}
 		var plan *service.PlanView
 		err = d.DB.Tx(ctx, func(tx *sql.Tx) error {
 			row, err := service.UpdatePlan(ctx, tx, d.Now(), id, body.patch)
@@ -397,8 +479,10 @@ func registerPlans(r *Router, d *Deps) {
 			if err != nil {
 				return err
 			}
-			plan, err = service.SerializePlan(ctx, tx, row, actor, myClassIDs)
-			return err
+			if plan, err = service.SerializePlan(ctx, tx, row, actor, myClassIDs); err != nil {
+				return err
+			}
+			return annotatePlan(ctx, tx, actor, plan)
 		})
 		if err != nil {
 			return err

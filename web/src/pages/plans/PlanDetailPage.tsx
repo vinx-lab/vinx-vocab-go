@@ -6,7 +6,7 @@ import { api, errorMessage } from "@/lib/api";
 import type { Plan, PlanProgressItem, PlanStatus } from "@/types";
 import { ErrorBlock, Loading, PageHeader, StatTile } from "@/components/ui";
 import { ProgressRing } from "@/components/charts";
-import { PlanKindTag, PlanStatusTag, dateRangeText, groupUnitsByBook, modesText } from "./plan-format";
+import { PlanKindTag, PlanStatusTag, PlanTargetTags, dateRangeText, groupUnitsByBook, modesText } from "./plan-format";
 
 type ProgressData = { day: string; totalWords: number; items: PlanProgressItem[] };
 
@@ -123,6 +123,7 @@ export function PlanDetailPage() {
       >
         <PlanKindTag kind={plan.kind} />
         <PlanStatusTag status={plan.status} />
+        <PlanTargetTags plan={plan} />
         <span style={{ fontSize: 13 }}>{plan.isSelfPlan ? "自己安排" : `${plan.creator.name} 创建`}</span>
       </PageHeader>
 

@@ -148,6 +148,7 @@ func (b *profileBody) Validate(v *httpx.V) {
 - **版本对能力与数据范围的影响**：路由在身份解析后把本次请求的版本写进 `Actor.Edition`。
   - `service.Can(a, cap)` = 角色具备该能力 **且** `core.EditionAllows(edition, cap)`：个人版下 `classes`、`users`、`plans.assign`、`students.view` 视为没有（`RequireCap` 与 `AssertCan` 都经它）。`/auth/me` 下发的 `capabilities` 仍按角色给出（与旧版个人版一致），前端按 `/config` 的 `features` 隐藏入口。
   - 「看全部数据」一律用 `service.SeesAll(a)`（班级版的管理员），不要用 `IsAdmin`：个人版下管理员也只看自己的数据（从班级版降级后库里可能仍有多个账号）。`IsAdmin` 只用于管理权限本身（系统词书标记、代管账号等）。
+  - 只拿到 `userID`、没有 `Actor` 的学习流（今日队列 `LoadPlansForLearners`、开组）要知道版本时，读路由用 `service.WithEdition` 挂在请求 ctx 上的版本（没挂按班级版处理）。目前只用于班级的自主开关（spec 0008：个人版不看班级，相当于永远允许）。
   - 个人版的数据范围：计划 = 自己创建的 + 安排给自己的（含所在班级的，降级前布置的计划照常学）；词书 = 系统 + 自己的 + 所在班级老师的；学习记录只能看自己；管理员可编辑系统词书与自己的词书，不能编辑他人的。
 
 ## 版本（edition）

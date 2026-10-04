@@ -557,6 +557,13 @@ func StartSession(ctx context.Context, db *store.DB, loc *time.Location, now tim
 			return nil, httpx.Validation("缺少计划")
 		}
 		if plan == nil {
+			paused, err := selfPlanPausedFor(ctx, db, userID, *planID)
+			if err != nil {
+				return nil, err
+			}
+			if paused {
+				return nil, httpx.Forbidden("班级未开放自主安排，这份计划暂停中")
+			}
 			return nil, httpx.NotFound("计划不存在、未生效或不属于你")
 		}
 		name := plan.Name

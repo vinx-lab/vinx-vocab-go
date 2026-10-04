@@ -54,6 +54,7 @@ import type { BookDetail, Paged, TextKind, UnitText, UnitWord, UnitWordsData } f
 import { UnitTextsPanel } from "./UnitTexts";
 import { EmptyBlock, ErrorBlock, Loading, PageHeader, SpeakButton } from "@/components/ui";
 import { useAiStatus } from "@/lib/useAiStatus";
+import { SELF_PLAN_CLOSED_TEXT, myTargetsKey, useMyTargets } from "@/lib/targets";
 import { useAiJob } from "@/lib/useAiJob";
 import { AiJobProgress, AiPromptPreview } from "@/components/AiPromptPreview";
 
@@ -116,6 +117,19 @@ export function BookDetailPage() {
   });
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["books"] });
+
+  // spec 0008：「用所选单元建计划」只对目标词书里的书可用（学生；能给别人布置的老师到建计划页按对象约束）
+  const learnerOnly = can(identity, "plans") && !can(identity, "plans.assign");
+  const myTargets = useMyTargets(learnerOnly);
+  const addToTargets = useMutation({
+    mutationFn: (bookId: string) => api.put(`/me/target-books`, { bookIds: [...(myTargets.data?.ownBooks ?? []).map((b) => b.id), bookId] }),
+    onSuccess: () => {
+      message.success("已加入我的目标词书");
+      void queryClient.invalidateQueries({ queryKey: [...myTargetsKey] });
+      void queryClient.invalidateQueries({ queryKey: ["records"] });
+    },
+    onError: (e) => message.error(errorMessage(e, "加入失败")),
+  });
 
   const deleteBook = useMutation({
     mutationFn: () => api.del(`/books/${id}`),
@@ -209,16 +223,26 @@ export function BookDetailPage() {
     setQ("");
   };
 
+  const t = learnerOnly ? myTargets.data : undefined;
+  const selfClosed = t?.canEditOwn === false;
+  const outsideTarget = !!t && t.books.length > 0 && !t.books.some((b) => b.id === book.id);
+  const planBlocked = selfClosed || outsideTarget;
   const headerActions = (
     <>
       {canPlan && (
         <Button
           type="primary"
           icon={<ScheduleOutlined />}
-          disabled={selected.length === 0}
+          disabled={selected.length === 0 || planBlocked}
+          title={selfClosed ? SELF_PLAN_CLOSED_TEXT : outsideTarget ? "先把这本书加入目标词书" : undefined}
           onClick={() => navigate(`/plans/new?bookId=${book.id}&unitIds=${selected.join(",")}`)}
         >
           用所选单元建计划{selected.length > 0 ? `（${selected.length}）` : ""}
+        </Button>
+      )}
+      {canPlan && outsideTarget && !selfClosed && (
+        <Button loading={addToTargets.isPending} onClick={() => addToTargets.mutate(book.id)}>
+          加入我的目标
         </Button>
       )}
       {editable && canImport && (
@@ -266,6 +290,13 @@ export function BookDetailPage() {
           </Tag>
         )}
         {book.units.length} 单元 · {totalWords} 词{book.description ? ` · ${book.description}` : ""}
+        {canPlan && planBlocked && (
+          <div style={{ marginTop: 4, fontSize: 13, color: "var(--muted)" }} data-testid="book-plan-hint">
+            {selfClosed
+              ? `${SELF_PLAN_CLOSED_TEXT}，目标词书由老师设置。`
+              : "这本书不在你的目标词书里：先把这本书加入目标词书，再用它建计划。"}
+          </div>
+        )}
       </PageHeader>
 
       {book.units.length === 0 ? (

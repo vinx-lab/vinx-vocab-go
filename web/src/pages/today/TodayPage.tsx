@@ -2,11 +2,12 @@ import { useState } from "preact/hooks";
 import { Link, useNavigate } from "@/lib/router";
 import { useQuery, useQueryClient } from "@/lib/query";
 import { useIdentity } from "@/lib/auth";
-import { Button, Col, Row, Tag, useApp } from "@/ui";
+import { Alert, Button, Col, Row, Tag, useApp } from "@/ui";
 import { CheckCircleFilled, EditOutlined, FireFilled, PlayCircleFilled, PlusOutlined, PrinterOutlined, ThunderboltOutlined } from "@/ui";
 import { gradeLink, todaySheetTitle } from "@/pages/sheets/dictation";
 import { api, errorMessage } from "@/lib/api";
 import { can } from "@/lib/perms";
+import { SELF_PLAN_CLOSED_TEXT, useMyTargets } from "@/lib/targets";
 import { EmptyBlock, ErrorBlock, Loading, PageHeader, StatTile } from "@/components/ui";
 import { ProgressRing } from "@/components/charts";
 import type { CoverageData, SessionKind, TodayData, TodayPlanCard } from "@/types";
@@ -44,6 +45,9 @@ export function TodayPage() {
   const { message } = useApp();
   const [starting, setStarting] = useState<string | null>(null);
   const q = useQuery({ queryKey: ["today"], queryFn: () => api.get<TodayData>("/today"), refetchOnWindowFocus: true });
+  // spec 0008：班级未开放自主安排时，「自己安排计划」不可用（能给别人布置的老师、管理员不受影响）
+  const targets = useMyTargets(can(identity, "plans") && !can(identity, "plans.assign"));
+  const selfClosed = !can(identity, "plans.assign") && targets.data?.canEditOwn === false;
 
   const start = async (kind: SessionKind, planId: string | null) => {
     const key = `${kind}:${planId}`;
@@ -77,6 +81,7 @@ export function TodayPage() {
   if (q.isLoading) return <div className="vx-page"><Loading /></div>;
   if (q.isError || !q.data) return <div className="vx-page"><ErrorBlock error={q.error} onRetry={() => q.refetch()} /></div>;
   const t = q.data;
+  const outside = new Set(t.outsideTargetPlanIds ?? []);
   const pending = t.plans.filter((p) => !p.doneToday);
   const done = t.plans.filter((p) => p.doneToday);
   const allDone = t.plans.length > 0 && pending.length === 0;
@@ -87,11 +92,16 @@ export function TodayPage() {
         eyebrow={formatDay(t.day)}
         title={`${greeting()}，${identity?.name ?? "同学"}`}
         extra={
-          can(identity, "plans") && (
+          can(identity, "plans") &&
+          (selfClosed ? (
+            <Button icon={<PlusOutlined />} disabled title={SELF_PLAN_CLOSED_TEXT}>
+              自己安排计划
+            </Button>
+          ) : (
             <Link to="/plans/new">
               <Button icon={<PlusOutlined />}>自己安排计划</Button>
             </Link>
-          )
+          ))
         }
       >
         {t.plans.length === 0
@@ -118,17 +128,27 @@ export function TodayPage() {
 
       <TargetProgressCard />
 
+      {(t.pausedSelfPlans ?? 0) > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 14 }}
+          message={`你自己安排的 ${t.pausedSelfPlans} 份计划暂停中`}
+          description="所在班级未开放自主安排计划，自建的计划暂时不出现在今日任务里；老师重新允许后自动恢复，之前的学习记录都保留。"
+        />
+      )}
+
       {t.plans.length === 0 ? (
         <EmptyBlock
           title="今天没有学习任务"
           description={
-            can(identity, "plans")
+            can(identity, "plans") && !selfClosed
               ? "老师布置的计划会自动出现在这里；你也可以从词书里挑几个单元，给自己安排一个计划。"
               : "老师布置的计划会自动出现在这里。"
           }
           action={
             <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-              {can(identity, "plans") && (
+              {can(identity, "plans") && !selfClosed && (
                 <Link to="/plans/new">
                   <Button type="primary">给自己安排计划</Button>
                 </Link>
@@ -142,7 +162,7 @@ export function TodayPage() {
       ) : (
         <div style={{ display: "grid", gap: 14 }}>
           {pending.map((p, i) => (
-            <PlanCard key={p.planId} plan={p} index={i} starting={starting} onStart={start} />
+            <PlanCard key={p.planId} plan={p} index={i} starting={starting} onStart={start} outsideTarget={outside.has(p.planId)} />
           ))}
           {done.length > 0 && (
             <>
@@ -150,7 +170,7 @@ export function TodayPage() {
                 <CheckCircleFilled style={{ color: "var(--good)" }} /> 今日已完成
               </div>
               {done.map((p, i) => (
-                <PlanCard key={p.planId} plan={p} index={i} starting={starting} onStart={start} />
+                <PlanCard key={p.planId} plan={p} index={i} starting={starting} onStart={start} outsideTarget={outside.has(p.planId)} />
               ))}
             </>
           )}
@@ -265,7 +285,20 @@ function TargetProgressCard() {
   );
 }
 
-function PlanCard({ plan: p, index, starting, onStart }: { plan: TodayPlanCard; index: number; starting: string | null; onStart: (k: SessionKind, planId: string) => void }) {
+function PlanCard({
+  plan: p,
+  index,
+  starting,
+  onStart,
+  outsideTarget,
+}: {
+  plan: TodayPlanCard;
+  index: number;
+  starting: string | null;
+  onStart: (k: SessionKind, planId: string) => void;
+  /** 计划有单元所在的书不在我的目标词书内（spec 0008） */
+  outsideTarget?: boolean;
+}) {
   const active = (kind: SessionKind) => p.activeSessions.find((s) => s.kind === kind);
   const loading = (kind: SessionKind) => starting === `${kind}:${p.planId}`;
 
@@ -309,6 +342,13 @@ function PlanCard({ plan: p, index, starting, onStart }: { plan: TodayPlanCard; 
             </Link>
             {p.kind === "test" && <Tag color="geekblue" bordered={false}>检测</Tag>}
             {p.doneToday && <Tag color="green" bordered={false}>今日完成</Tag>}
+            {outsideTarget && (
+              <span title="计划里有单元所在的词书不在你的目标词书内，这部分进度不计入目标">
+<Tag bordered={false}>
+                不在目标词书内
+              </Tag>
+</span>
+            )}
           </div>
           <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>
             {p.source === "assigned" ? `${p.creatorName} 安排` : "自己安排"} · 已学 {p.learnedWords}/{p.totalWords} 词 · {p.modes.map((m) => MODE_LABEL[m]).join(" + ")}

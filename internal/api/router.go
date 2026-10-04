@@ -11,6 +11,7 @@ import (
 	"github.com/vinx-lab/vinx-vocab-go/internal/auth"
 	"github.com/vinx-lab/vinx-vocab-go/internal/core"
 	"github.com/vinx-lab/vinx-vocab-go/internal/httpx"
+	"github.com/vinx-lab/vinx-vocab-go/internal/service"
 	"github.com/vinx-lab/vinx-vocab-go/internal/store"
 	"github.com/vinx-lab/vinx-vocab-go/internal/web"
 )
@@ -121,6 +122,8 @@ func (r *Router) Handle(method, pattern string, h httpx.HandlerFunc, mws ...http
 				return
 			}
 			actor.Edition = ed.Edition
+			// 只拿到 userID 的学习流（今日队列、开组）据此判断班级自主开关是否生效（spec 0008）
+			req = req.WithContext(service.WithEdition(req.Context(), ed.Edition))
 		}
 		if err := h(w, req); err != nil {
 			httpx.Fail(w, req, err)

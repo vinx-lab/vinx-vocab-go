@@ -116,8 +116,12 @@ type PlanView struct {
 	TargetsMe    bool             `json:"targetsMe"`
 	IsSelfPlan   bool             `json:"isSelfPlan"`
 	CanEdit      bool             `json:"canEdit"`
-	CreatedAt    store.Time       `json:"createdAt"`
-	UpdatedAt    store.Time       `json:"updatedAt"`
+	// SelfPlanPaused 学生自建、只安排给自己的计划，因所在班级不允许自主安排而暂停（算出来的，不改 status；spec 0008）。
+	SelfPlanPaused bool `json:"selfPlanPaused"`
+	// OutsideTarget 计划安排给我，且有单元所在的书不在我的有效目标词书里（目标为空时为 false；spec 0008）。
+	OutsideTarget bool       `json:"outsideTarget"`
+	CreatedAt     store.Time `json:"createdAt"`
+	UpdatedAt     store.Time `json:"updatedAt"`
 }
 
 // planUnitIDs 计划的单元 id（按 sortOrder）。
@@ -476,6 +480,9 @@ func ListPlans(ctx context.Context, q store.Querier, a *Actor, query ListPlansQu
 			return nil, err
 		}
 		items = append(items, *v)
+	}
+	if err := AnnotatePlans(ctx, q, a, items); err != nil {
+		return nil, err
 	}
 	return items, nil
 }
