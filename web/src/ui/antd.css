@@ -2171,5 +2171,3 @@ a.ant-typography[disabled]:active,.ant-typography a[disabled]:active,a.ant-typog
 .ant-tag.ant-tag-error.ant-tag-borderless{border-color:transparent}
 .ant-tag.ant-tag-warning{color:var(--ant-color-warning);background:var(--ant-color-warning-bg);border-color:var(--ant-color-warning-border)}
 .ant-tag.ant-tag-warning.ant-tag-borderless{border-color:transparent}
-html body{overflow-y:hidden;width:calc(100% + 0px)}
-html body{overflow-y:hidden}

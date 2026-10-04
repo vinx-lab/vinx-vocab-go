@@ -26,6 +26,8 @@ const DROP_LIST = [
   /ant-tag-(magenta|lime|gold|blue|purple|red|green|orange|cyan|volcano|geekblue)-inverse/,
   /ant-(zoom|move|fade)-(up|down|left|right|big-fast)?-?(appear|enter|leave)/,
   /ant-(collapse|timeline)[^,{]*(-borderless|-label|alternate|reverse|pending|-right)/,
+  // 弹窗打开时 antd 动态加的滚动锁（rc-util ScrollLocker），抽样时弹窗开着就会被抽进来；静态写死会让整页无法滚动
+  /^html body$/,
   // 组件库不做进出场动画，也不用 Tooltip/Popover 的彩色预设
   /ant-(zoom|move|slide|fade|motion)|-motion-|-appear|-enter|-leave/,
   /ant-(tooltip|popover)-(pink|magenta|red|volcano|orange|yellow|gold|cyan|lime|green|blue|geekblue|purple)\b/,
