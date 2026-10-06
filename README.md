@@ -144,3 +144,7 @@ GO := /path/to/go/bin/go
 - `internal/api/`：路由、校验、权限
 - `web/`：Preact 前端（Vite），构建产物用 `go:embed` 嵌入
 - `contract/`：API 黑盒契约测试；`e2e/`：Playwright 端到端测试
+
+## 许可证
+
+[MIT](LICENSE)
