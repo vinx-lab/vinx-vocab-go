@@ -31,6 +31,14 @@ func signupAs(t *testing.T, e *testEnv, email string) (cookie string, user map[s
 	return cookieOf(t, r), r.Body["data"].(map[string]any)["user"].(map[string]any)
 }
 
+// /config 带上程序版本，页面据此显示「版本 …」。
+func TestConfigVersion(t *testing.T) {
+	e := newEnv(t, nil)
+	if v := configOf(t, e)["version"]; v != "dev" {
+		t.Fatalf("version = %v", v)
+	}
+}
+
 func TestFirstRunSetupPersonal(t *testing.T) {
 	e := newEnv(t, nil)
 	cfg := configOf(t, e)

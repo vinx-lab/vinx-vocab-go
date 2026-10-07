@@ -4,6 +4,7 @@ import { Button, Form, Input, Segmented, useApp } from "@/ui";
 import { api } from "@/lib/api";
 import { check, login, setSignedIn } from "@/lib/auth";
 import { homePath } from "@/lib/perms";
+import { useConfig } from "@/lib/useConfig";
 import type { User } from "@vinx/shared";
 
 interface LoginValues {
@@ -22,6 +23,7 @@ interface SignupValues {
 export function LoginPage() {
   const { route, query } = useLocation();
   const { message } = useApp();
+  const { version } = useConfig();
   const [mode, setMode] = useState<"login" | "signup">(query.mode === "signup" ? "signup" : "login");
   // 首次运行向导跳到 /login?mode=signup 时，登录页可能已经挂着（守卫先把人送到了 /login），这里跟上
   useEffect(() => {
@@ -115,6 +117,11 @@ export function LoginPage() {
             演示账号（密码 dev123456）
             <br />
             student@vinx.test · teacher@vinx.test · admin@vinx.test
+          </div>
+        )}
+        {version && (
+          <div style={{ color: "var(--muted)", fontSize: 12, textAlign: "center", marginTop: 16 }}>
+            版本 {version}
           </div>
         )}
       </div>

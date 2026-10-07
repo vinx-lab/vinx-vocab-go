@@ -121,6 +121,12 @@ export function AppLayout({ children }: { children: ComponentChildren }) {
       },
       { type: "divider" as const },
       { key: "logout", icon: <LogoutOutlined />, label: "退出登录", danger: true },
+      ...(config.version
+        ? [
+            { type: "divider" as const },
+            { key: "version", label: <span style={{ fontSize: 12 }}>版本 {config.version}</span>, disabled: true },
+          ]
+        : []),
     ],
     selectedKeys: [`theme:${themePref}`],
     onClick: ({ key }: { key: string }) => {

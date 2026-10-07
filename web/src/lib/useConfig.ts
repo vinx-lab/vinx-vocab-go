@@ -12,6 +12,7 @@ const FALLBACK: AppConfig = {
   editionLocked: false,
   needsSetup: false,
   dev: false,
+  version: "",
 };
 
 /** 运行时配置（版本 / 功能开关 / AI / 发音） */

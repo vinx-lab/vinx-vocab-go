@@ -21,6 +21,8 @@ type AppConfig struct {
 	NeedsSetup bool `json:"needsSetup"`
 	// Dev 以 serve --dev 启动：前端据此显示免密切换账号入口（Go 版新增，spec 0002）。
 	Dev bool `json:"dev"`
+	// Version 程序版本（构建时由 git 标签注入），页面上显示，用来确认是否已升级。
+	Version string `json:"version"`
 }
 
 // SignupEnabled 个人版：只允许存在一个账号；班级版：开放注册（可用 SIGNUP_ENABLED 关闭）。

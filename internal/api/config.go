@@ -31,6 +31,7 @@ func (d *Deps) appConfig(ctx context.Context) (*service.AppConfig, error) {
 		EditionLocked: ed.Locked,
 		NeedsSetup:    needsSetup,
 		Dev:           d.Cfg.Dev,
+		Version:       d.Version,
 	}, nil
 }
 

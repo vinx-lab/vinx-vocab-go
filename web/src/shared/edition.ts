@@ -56,4 +56,6 @@ export interface AppConfig {
   needsSetup: boolean;
   /** 以 serve --dev 启动：显示免密切换账号入口（Go 版新增，spec 0002） */
   dev: boolean;
+  /** 程序版本（构建时由 git 标签注入，如 v3.1.0；本地开发为 dev） */
+  version: string;
 }

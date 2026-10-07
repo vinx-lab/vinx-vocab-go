@@ -64,6 +64,8 @@
 ## 8. Git 与提交
 
 - Conventional Commits：`feat:` / `fix:` / `chore:` / `docs:` / `refactor:`，可用中文说明。
+- **版本号**：语义化版本，只修 bug 升修订号、新增功能升次版本号、不兼容升主版本号；首个版本为 `v3.1.0`。版本号只来自 git 标签 `vX.Y.Z`，代码里不写死：`make build` / `make cross` 用 `git describe` 注入 `main.version`，标签之后的提交显示为 `v3.1.0-2-g<哈希>`，有未提交改动带 `-dirty`。页面右上角用户菜单和登录页显示版本，部署后据此确认是否已更新。
+- 发版：先在 [CHANGELOG.md](../CHANGELOG.md) 把 `[Unreleased]` 改为 `[x.y.z] - 日期`（按「新增 / 修复」分组，链接写完整 URL），提交后打标签 `git tag -a vX.Y.Z -m "Vinx Vocab X.Y.Z"`，再构建。
 
 ## 9. 文档
 
