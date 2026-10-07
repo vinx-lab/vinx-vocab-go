@@ -14,7 +14,8 @@ const FILTERS: { label: string; value: WordFilter }[] = [
   { label: "全部", value: "all" },
   { label: "今天到期", value: "due" },
   { label: "难词", value: "difficult" },
-  { label: "学习中", value: "learning" },
+  { label: "没记住", value: "missed" },
+  { label: "刚记住", value: "learning" },
   { label: "巩固中", value: "consolidating" },
   { label: "已掌握", value: "mastered" },
 ];
@@ -23,7 +24,8 @@ const EMPTY_TEXT: Record<WordFilter, string> = {
   all: "还没有学过的单词",
   due: "今天没有到期的单词",
   difficult: "暂时没有难词（遗忘 ≥ 2 次或难度 ≥ 7）",
-  learning: "没有学习中的单词",
+  missed: "没有没记住的单词（最近一次答错的词）",
+  learning: "没有刚记住的单词",
   consolidating: "没有巩固中的单词",
   mastered: "还没有已掌握的单词（稳定性 ≥ 21 天）",
 };
@@ -131,9 +133,13 @@ function WordCard({ word: w, userId }: { word: MemoryWord; userId?: string }) {
         {w.definition}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 12, color: "var(--muted)", flexWrap: "wrap" }}>
-        {w.isDue ? (
-          <Tag color="orange" bordered={false} style={{ margin: 0 }}>
-            到期
+        {w.isDue && w.forgetting ? (
+          <Tag color="red" bordered={false} style={{ margin: 0 }}>
+            可能忘了
+          </Tag>
+        ) : w.isDue ? (
+          <Tag color="gold" bordered={false} style={{ margin: 0 }}>
+            待复查
           </Tag>
         ) : (
           <span>下次复习 {fmtDate(w.due)}</span>

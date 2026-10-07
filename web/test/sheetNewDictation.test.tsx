@@ -79,8 +79,8 @@ describe("SheetNewPage · 默写单", () => {
       sentenceCount: 8,
     });
 
-    // 勾选「要学的句子」
-    const learning = [...el.querySelectorAll("label")].find((l) => l.textContent?.includes("要学的句子（2）"))!.querySelector("input") as HTMLInputElement;
+    // 勾选「没记住的句子」
+    const learning = [...el.querySelectorAll("label")].find((l) => l.textContent?.includes("没记住的句子（2）"))!.querySelector("input") as HTMLInputElement;
     await act(() => learning.click());
     await wait();
     expect(previews()[previews().length - 1].body.sentenceSources).toEqual([{ kind: "learning" }]);
@@ -120,7 +120,7 @@ describe("SheetNewPage · 默写单", () => {
     await wait();
     // 词、句子都没有来源：不再请求预览
     const n = calls.filter((c) => c.path === "/api/sheets/preview").length;
-    const learning = [...el.querySelectorAll("label")].find((l) => l.textContent?.includes("要学的句子"))!.querySelector("input") as HTMLInputElement;
+    const learning = [...el.querySelectorAll("label")].find((l) => l.textContent?.includes("没记住的句子"))!.querySelector("input") as HTMLInputElement;
     await act(() => learning.click());
     await wait();
     const last = calls.filter((c) => c.path === "/api/sheets/preview");

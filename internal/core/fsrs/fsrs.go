@@ -246,3 +246,11 @@ func (s *Scheduler) schedule(cur Card, g Rating, t int, r float64, now time.Time
 	}
 	return c
 }
+
+// Retrievability 卡片在 now 时的回忆概率（ts-fsrs get_retrievability）；从没复习过（没有 lastReview 或稳定度为 0）返回 0。
+func (s *Scheduler) Retrievability(card Card, now time.Time) float64 {
+	if card.LastReview == nil || card.Stability <= 0 {
+		return 0
+	}
+	return s.forgettingCurve(max(0, dateDiffInDays(*card.LastReview, now)), card.Stability)
+}

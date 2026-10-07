@@ -462,8 +462,9 @@ func TestRecordAnswerRules(t *testing.T) {
 	}
 }
 
-// TestTestRetakeAndLearnedOnly 检测只更新已学词、首次交卷为正式成绩，重考不更新记忆（K10 / K20）。
-func TestTestRetakeAndLearnedOnly(t *testing.T) {
+// TestTestPlanEveryRoundCounts 检测计划每组都是新的检测（spec 0009）：已学词更新记忆，没学过的词答对建卡（不占每日额度）、
+// 答错不建（留在新词池）；后续组照样更新记忆，同一学习日的第二组不再更新（K19）；正式成绩仍是首次交卷（K20）。
+func TestTestPlanEveryRoundCounts(t *testing.T) {
 	ctx := context.Background()
 	f := newLearnFixture(t, 6)
 	day1 := sh(2026, 9, 28, 10, 0, 0)
@@ -471,6 +472,10 @@ func TestTestRetakeAndLearnedOnly(t *testing.T) {
 	s := f.start(t, day1, "learn", daily)
 	f.answerAll(t, day1, s.Session, "practice", nil)
 	f.complete(t, day1, s.Session.ID)
+	learned := map[string]bool{}
+	for _, it := range snapOf(t, s.Session).Items {
+		learned[it.WordID] = true
+	}
 
 	day2 := sh(2026, 9, 29, 10, 0, 0)
 	testPlan := f.plan(t, day1, PlanInput{Kind: "test", Modes: []string{"recognition"}, TestSize: 6, TestScope: "all"})
@@ -482,29 +487,82 @@ func TestTestRetakeAndLearnedOnly(t *testing.T) {
 	if codeOf(err) != "VALIDATION 作答阶段不匹配" {
 		t.Fatalf("检测用 practice：%v %v", r, err)
 	}
-	f.answerAll(t, day2, ts.Session, "test", nil)
+	// 没学过的词里答错一个
+	missed := ""
+	for _, it := range snapOf(t, ts.Session).Items {
+		if !learned[it.WordID] {
+			missed = it.WordID
+			break
+		}
+	}
+	f.answerAll(t, day2, ts.Session, "test", func(w, _ string) bool { return w == missed })
 	res := f.complete(t, day2, ts.Session.ID)
-	// 6 个词全对都结算，但只有已学的 3 个更新记忆
-	if res.Settled != 6 || res.Ratings["good"] != 3 || res.NewLearned != 0 {
+	// 已学 3 个更新 + 没学过答对的 2 个建卡；答错的那个不建
+	if res.Settled != 6 || res.Ratings["good"] != 5 || len(res.Ratings) != 1 || res.NewLearned != 0 {
 		t.Fatalf("检测结果 %+v", res)
 	}
+	var mems, noPlan, missedMem int
+	f.db.QueryRow(`SELECT count(*), sum("introducedPlanId" IS NULL), sum("wordId" = ?) FROM "MemoryState" WHERE "userId" = ?`, missed, f.userID).Scan(&mems, &noPlan, &missedMem)
+	if mems != 5 || noPlan != 2 || missedMem != 0 {
+		t.Fatalf("记忆 %d，不占额度的 %d，答错的生词 %d", mems, noPlan, missedMem)
+	}
+	q, _ := ComputeToday(ctx, f.db, shanghai, day2, f.userID)
+	for _, c := range q.Plans {
+		if c.PlanID == daily && (c.NewAvailable != 1 || c.NewDoneToday != 0) {
+			t.Fatalf("答错的生词留在新词池、检测建卡不占额度：%+v", c)
+		}
+	}
+
+	// 第二天再测一组（全错）：记忆照样更新
 	day3 := sh(2026, 9, 30, 10, 0, 0)
 	retake := f.start(t, day3, "test", testPlan)
 	f.answerAll(t, day3, retake.Session, "test", func(string, string) bool { return true })
 	res2 := f.complete(t, day3, retake.Session.ID)
-	if len(res2.Ratings) != 0 || res2.CorrectFirst != 0 {
-		t.Fatalf("重考不更新记忆：%+v", res2)
+	if res2.Ratings["again"] != 5 || len(res2.Ratings) != 1 || res2.CorrectFirst != 0 {
+		t.Fatalf("后续组更新记忆：%+v", res2)
 	}
 	var logs int
 	f.db.QueryRow(`SELECT count(*) FROM "ReviewLog" WHERE "sessionId" = ?`, retake.Session.ID).Scan(&logs)
-	if logs != 0 {
-		t.Fatalf("重考产生了 %d 条复习记录", logs)
+	if logs != 5 {
+		t.Fatalf("后续组的复习记录 %d", logs)
 	}
-	q, _ := ComputeToday(ctx, f.db, shanghai, day3, f.userID)
+	// 同一天第三组：不再更新
+	third := f.start(t, day3.Add(time.Hour), "test", testPlan)
+	f.answerAll(t, day3.Add(time.Hour), third.Session, "test", nil)
+	if res3 := f.complete(t, day3.Add(time.Hour), third.Session.ID); len(res3.Ratings) != 0 {
+		t.Fatalf("同日第二组不更新记忆：%+v", res3)
+	}
+	q, _ = ComputeToday(ctx, f.db, shanghai, day3, f.userID)
 	for _, c := range q.Plans {
-		if c.PlanID == testPlan && (c.TestResult == nil || c.TestResult.SessionID != ts.Session.ID || c.TestResult.Correct != 6) {
+		if c.PlanID == testPlan && (c.TestResult == nil || c.TestResult.SessionID != ts.Session.ID || c.TestResult.Correct != 5) {
 			t.Fatalf("正式成绩应为首次交卷：%+v", c.TestResult)
 		}
+	}
+}
+
+// TestDrillUpdatesMemory 错词强化按复习的规则更新记忆，每个词每个学习日最多一次（spec 0009）。
+func TestDrillUpdatesMemory(t *testing.T) {
+	f := newLearnFixture(t, 3)
+	day1 := sh(2026, 9, 28, 10, 0, 0)
+	daily := f.plan(t, day1, PlanInput{NewPerDay: 3})
+	s := f.start(t, day1, "learn", daily)
+	f.answerAll(t, day1, s.Session, "practice", func(string, string) bool { return true })
+	f.complete(t, day1, s.Session.ID)
+
+	day2 := sh(2026, 9, 29, 10, 0, 0)
+	d := f.start(t, day2, "drill", "")
+	if d.Session.WordCount == 0 {
+		t.Fatal("没有错词可强化")
+	}
+	f.answerAll(t, day2, d.Session, "practice", nil)
+	res := f.complete(t, day2, d.Session.ID)
+	if res.Ratings["good"] != d.Session.WordCount {
+		t.Fatalf("错词强化全对应为 good：%+v", res)
+	}
+	d2 := f.start(t, day2.Add(time.Hour), "drill", "")
+	f.answerAll(t, day2.Add(time.Hour), d2.Session, "practice", nil)
+	if res2 := f.complete(t, day2.Add(time.Hour), d2.Session.ID); len(res2.Ratings) != 0 {
+		t.Fatalf("同日再强化不更新：%+v", res2)
 	}
 }
 
@@ -560,7 +618,7 @@ func TestDeletePlanSettlesWithFSRS(t *testing.T) {
 	if mems != 1 || logs != 1 || logDay != "2026-09-29" || empty != 0 {
 		t.Fatalf("mems=%d logs=%d logDay=%s empty=%d", mems, logs, logDay, empty)
 	}
-	h, err := UserWordHistory(ctx, f.db, f.userID, it.WordID)
+	h, err := UserWordHistory(ctx, f.db, shanghai, time.Now(), f.userID, it.WordID)
 	// introducedPlanId 不是外键，计划删除后保留原值（与旧库一致）
 	if err != nil || h.Memory == nil || len(h.ReviewLogs) != 1 || h.Memory.IntroducedPlanID == nil || *h.Memory.IntroducedPlanID != planID {
 		t.Fatalf("单词历史 %+v err %v", h, err)

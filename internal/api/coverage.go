@@ -55,7 +55,7 @@ func (q *coverageWordsQuery) Validate(v *httpx.V) {
 	if s := v.OptStr("bookId", q.BookID); s != nil {
 		q.bookID = *s
 	}
-	q.status = v.OptEnum("status", q.Status, core.CoverageStatuses, "", "")
+	q.status = v.OptEnum("status", q.Status, core.CoverageWordFilters, "", "")
 }
 
 func registerCoverage(r *Router, d *Deps) {
@@ -98,7 +98,7 @@ func registerCoverage(r *Router, d *Deps) {
 		if err != nil {
 			return err
 		}
-		out, err := service.UserCoverage(req.Context(), d.DB, service.TargetUsesClasses(auth.ActorFrom(req.Context())), userID)
+		out, err := service.UserCoverage(req.Context(), d.DB, d.Cfg.Location, d.Now(), service.TargetUsesClasses(auth.ActorFrom(req.Context())), userID)
 		if err != nil {
 			return err
 		}
@@ -115,7 +115,7 @@ func registerCoverage(r *Router, d *Deps) {
 		if err != nil {
 			return err
 		}
-		out, err := service.CoverageWords(req.Context(), d.DB, service.TargetUsesClasses(auth.ActorFrom(req.Context())), userID, q.bookID, q.status, q.page, q.limit)
+		out, err := service.CoverageWords(req.Context(), d.DB, d.Cfg.Location, d.Now(), service.TargetUsesClasses(auth.ActorFrom(req.Context())), userID, q.bookID, q.status, q.page, q.limit)
 		if err != nil {
 			return err
 		}

@@ -110,9 +110,9 @@ export function ClassOverviewTab({ classId, onSetTargets }: { classId: string; o
       render: (_, r) =>
         r.coverage ? (
           <span>
-            <span title={`已测 ${r.coverage.tested}/${r.coverage.target} 词`}>{percent(testedRate(r.coverage))}</span>
+            <span title={`已接触 ${r.coverage.tested}/${r.coverage.target} 词`}>{percent(testedRate(r.coverage))}</span>
             {selfGradedText(r.coverage) && (
-              <span title={`已测的 ${r.coverage.tested} 词里，${r.coverage.selfGraded ?? 0} 词最近一次是学生自批的默写单；需要时再出一份默写单由老师批改复核`}>
+              <span title={`已接触的 ${r.coverage.tested} 词里，${r.coverage.selfGraded ?? 0} 词最近一次是学生自批的默写单；需要时再出一份默写单由老师批改复核`}>
                 <Tag color="orange" bordered={false} style={{ marginLeft: 6 }}>
                   {selfGradedText(r.coverage)}
                 </Tag>
@@ -124,7 +124,7 @@ export function ClassOverviewTab({ classId, onSetTargets }: { classId: string; o
         ),
     },
     {
-      title: "要学",
+      title: "没记住",
       key: "learning",
       width: 80,
       sorter: (a, b) => (a.coverage?.learning ?? -1) - (b.coverage?.learning ?? -1),
@@ -147,7 +147,7 @@ export function ClassOverviewTab({ classId, onSetTargets }: { classId: string; o
           type="info"
           showIcon
           message="还没有设置目标词书"
-          description="设置后，学生的今日页会出现目标进度，这里会显示每个学生的目标覆盖和要学的词数。"
+          description="设置后，学生的今日页会出现目标进度，这里会显示每个学生的目标覆盖和没记住的词数。"
           action={
             onSetTargets && (
               <Button size="small" type="primary" onClick={onSetTargets}>

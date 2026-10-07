@@ -3,17 +3,214 @@ package core
 import (
 	"sort"
 	"time"
+
+	"github.com/vinx-lab/vinx-vocab-go/internal/core/fsrs"
 )
 
-// 目标词书覆盖进度（spec 0003）：每个目标词的覆盖状态由正式测试作答与记忆状态现算，不落库。
+// 作答证据与词状态（spec 0009）：结算、覆盖进度、学习记录、历史补算共用这里的定义。
 //
-//   - 正式测试作答：检测（test）与单词单测试（sheet）已交卷的组里，test 阶段的第一次作答（attempt = 1）；
-//     同一计划 / 同一张单子再次交卷的组是重测，只算练习（K20 / K29）。
-//   - 一个组里同一个词有多个题型时，任一题型答错即算这次答错（与结算的 wrongWordIds 同口径）。
-//   - 未测：从来没有正式测试作答；要学：最近一次答错；会了：最近一次答对，或最近一次答错但之后
-//     记忆达到「已掌握」（MasteryLevel = mastered，与「我的单词」同一判定，且最近复习晚于那次答错）。
+//   - 证据：已完成的学习组里，一个词在练习阶段（检测类组为检测阶段）的第一次作答；多个题型全对才算对。
+//   - 不算证据：巩固阶段与第二次及以后的作答、进行中的组、同一张单词单再次交卷的组（看过答案的原题），
+//     以及同一个词同一学习日里完成时间不是最早的那一条（K19 同口径）。检测计划每次随机抽题，不再有重测。
+//   - 状态：未接触 / 没记住 / 刚记住 / 巩固中 / 已掌握，另有「待复查」「可能忘了」两个标记。
 
-// CoverageStatus 覆盖状态：untested | learning | known。
+// EvidenceSession 一个已完成的学习组。
+type EvidenceSession struct {
+	ID   string
+	Kind string
+	// SheetID 单词单测试的单子（判定同一张单子的重测）；单子已删除时为 nil，按正式算。
+	SheetID *string
+	// Day 完成的学习日；At 完成时间。
+	Day string
+	At  time.Time
+	// SelfGraded 学生账号自批的默写单（spec 0006）。
+	SelfGraded bool
+}
+
+// EvidenceAnswer 一次作答。
+type EvidenceAnswer struct {
+	SessionID string
+	WordID    string
+	Mode      string
+	Phase     string
+	Attempt   int
+	Correct   bool
+	HintUsed  bool
+}
+
+// Evidence 一个词的一条证据。
+type Evidence struct {
+	SessionID  string
+	Kind       string
+	Day        string
+	At         time.Time
+	Correct    bool
+	SelfGraded bool
+	// Attempts 这一组里这个词各题型的首次作答（推导评分用）。
+	Attempts []FirstAttempt
+}
+
+// FirstPhase 某类学习组里算首次作答的阶段：检测类组是检测阶段，其余是练习阶段。
+func FirstPhase(kind string) string {
+	if IsTestKind(kind) {
+		return "test"
+	}
+	return "practice"
+}
+
+// SheetRetakes 同一张单子再次交卷的单词单测试组（按完成时间，最早的那组是正式的，其余是重测）。
+func SheetRetakes(sessions []EvidenceSession) map[string]bool {
+	list := sortedSessions(sessions)
+	out := map[string]bool{}
+	seen := map[string]bool{}
+	for _, s := range list {
+		if s.Kind != "sheet" || s.SheetID == nil {
+			continue
+		}
+		if seen[*s.SheetID] {
+			out[s.ID] = true
+			continue
+		}
+		seen[*s.SheetID] = true
+	}
+	return out
+}
+
+func sortedSessions(sessions []EvidenceSession) []EvidenceSession {
+	list := append([]EvidenceSession(nil), sessions...)
+	sort.SliceStable(list, func(i, j int) bool { return list[i].At.Before(list[j].At) })
+	return list
+}
+
+// BuildEvidence 按上面的规则从已完成的组与作答整理出每个词的证据（wordId → 按完成时间升序）。
+// 作答所在的组不在 sessions 里（进行中、已删除）的忽略。
+func BuildEvidence(sessions []EvidenceSession, answers []EvidenceAnswer) map[string][]Evidence {
+	retake := SheetRetakes(sessions)
+	byID := map[string]EvidenceSession{}
+	for _, s := range sessions {
+		byID[s.ID] = s
+	}
+	// 每组每词的首次作答，保持作答顺序
+	type key struct{ session, word string }
+	attempts := map[key][]FirstAttempt{}
+	wrong := map[key]bool{}
+	wordsOf := map[string][]string{}
+	for _, a := range answers {
+		s, ok := byID[a.SessionID]
+		if !ok || retake[s.ID] || a.Attempt != 1 || a.Phase != FirstPhase(s.Kind) {
+			continue
+		}
+		k := key{a.SessionID, a.WordID}
+		if _, seen := attempts[k]; !seen {
+			wordsOf[a.SessionID] = append(wordsOf[a.SessionID], a.WordID)
+		}
+		attempts[k] = append(attempts[k], FirstAttempt{Mode: a.Mode, Correct: a.Correct, HintUsed: a.HintUsed})
+		if !a.Correct {
+			wrong[k] = true
+		}
+	}
+	out := map[string][]Evidence{}
+	taken := map[string]bool{} // wordId + 学习日
+	for _, s := range sortedSessions(sessions) {
+		for _, w := range wordsOf[s.ID] {
+			dk := w + "\x00" + s.Day
+			if taken[dk] {
+				continue
+			}
+			taken[dk] = true
+			k := key{s.ID, w}
+			out[w] = append(out[w], Evidence{SessionID: s.ID, Kind: s.Kind, Day: s.Day, At: s.At, Correct: !wrong[k], SelfGraded: s.SelfGraded, Attempts: attempts[k]})
+		}
+	}
+	return out
+}
+
+// 词状态。
+const (
+	StageUntested      = "untested"
+	StageMissed        = "missed"
+	StageFresh         = "fresh"
+	StageConsolidating = "consolidating"
+	StageMastered      = "mastered"
+)
+
+// StageLabel 状态中文名。
+var StageLabel = map[string]string{
+	StageUntested: "未接触", StageMissed: "没记住", StageFresh: "刚记住", StageConsolidating: "巩固中", StageMastered: "已掌握",
+}
+
+// StageMemory 判定状态用到的记忆字段（没学过为 nil）。
+type StageMemory struct {
+	Stability  float64
+	Due        time.Time
+	LastReview *time.Time
+}
+
+// WordStageInfo 一个词的状态与标记。
+type WordStageInfo struct {
+	Stage string
+	// Due 待复查：已到期（due 早于今天结束）。Forgetting 可能忘了：回忆概率低于 ForgettingThreshold。
+	// 只在有记忆、且不是「没记住」时可能为 true；Forgetting 为 true 时 Due 也为 true。
+	Due        bool
+	Forgetting bool
+	// SelfGraded 决定状态的最近一条证据来自自批的默写单。
+	SelfGraded bool
+}
+
+// ForgettingThreshold 「可能忘了」的回忆概率阈值。
+const ForgettingThreshold = 0.7
+
+// Retrievability 记忆在 now 时的回忆概率（没有复习时间时为 0）。
+func Retrievability(m StageMemory, now time.Time) float64 {
+	return memoryScheduler.Retrievability(fsrs.Card{Stability: m.Stability, LastReview: m.LastReview}, now)
+}
+
+// WordStage 词状态：最近一条证据答错为「没记住」；否则有记忆按稳定度分层（没有记忆、但最近一次答对为「刚记住」）；
+// 既没有证据也没有记忆为「未接触」。ev 须按时间升序（BuildEvidence 的输出）。
+func WordStage(ev []Evidence, mem *StageMemory, now, dayEnd time.Time) WordStageInfo {
+	var last *Evidence
+	if len(ev) > 0 {
+		last = &ev[len(ev)-1]
+	}
+	out := WordStageInfo{}
+	if last != nil {
+		out.SelfGraded = last.SelfGraded
+	}
+	switch {
+	case last == nil && mem == nil:
+		out.Stage = StageUntested
+		return out
+	case last != nil && !last.Correct:
+		out.Stage = StageMissed
+		return out
+	case mem == nil:
+		out.Stage = StageFresh
+		return out
+	}
+	switch MasteryLevel(mem.Stability) {
+	case "mastered":
+		out.Stage = StageMastered
+	case "consolidating":
+		out.Stage = StageConsolidating
+	default:
+		out.Stage = StageFresh
+	}
+	if mem.Due.Before(dayEnd) {
+		out.Due = true
+		out.Forgetting = mem.LastReview != nil && Retrievability(*mem, now) < ForgettingThreshold
+	}
+	return out
+}
+
+// StageLevel 学习记录里的分层键（历史命名：「刚记住」是 learning）。
+func StageLevel(stage string) string {
+	if stage == StageFresh {
+		return "learning"
+	}
+	return stage
+}
+
+// CoverageStatus 覆盖进度的三档（接口兼容）：untested | learning（没记住）| known（刚记住、巩固中、已掌握）。
 type CoverageStatus = string
 
 const (
@@ -25,153 +222,103 @@ const (
 // CoverageStatuses 全部覆盖状态（接口校验用）。
 var CoverageStatuses = []string{CoverageUntested, CoverageLearning, CoverageKnown}
 
-// TestSessionRef 一个已交卷的学习组（判定重测用）。
-type TestSessionRef struct {
-	ID   string
-	Kind string
-	// GroupKey 检测为 planId、单词单为 sheetId；nil 表示计划 / 单子已删除，无法判断是否重测，按正式算。
-	GroupKey    *string
-	CompletedAt time.Time
-}
+// CoverageWordFilters 目标词列表可用的筛选：三档覆盖状态，或五级状态里的另外四个（spec 0009）。
+var CoverageWordFilters = []string{CoverageUntested, CoverageLearning, CoverageKnown, StageMissed, StageFresh, StageConsolidating, StageMastered}
 
-// FormalTestSessions 正式交卷的组：检测类组里，同一类型同一 GroupKey 最先交卷的那个（按 CompletedAt，
-// 同时按输入顺序）；GroupKey 为 nil 的各自算正式。非检测类组不在结果里。
-func FormalTestSessions(sessions []TestSessionRef) map[string]bool {
-	list := make([]TestSessionRef, 0, len(sessions))
-	for _, s := range sessions {
-		if IsTestKind(s.Kind) {
-			list = append(list, s)
-		}
-	}
-	sort.SliceStable(list, func(i, j int) bool { return list[i].CompletedAt.Before(list[j].CompletedAt) })
-	out := map[string]bool{}
-	seen := map[string]bool{}
-	for _, s := range list {
-		if s.GroupKey == nil {
-			out[s.ID] = true
-			continue
-		}
-		key := s.Kind + "\x00" + *s.GroupKey
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		out[s.ID] = true
-	}
-	return out
-}
-
-// CoverageAnswer 某个词的一次作答。
-type CoverageAnswer struct {
-	SessionID string
-	Kind      string // 学习组类型
-	Phase     string
-	Attempt   int
-	Correct   bool
-	// Retake 所在组是重测（见 FormalTestSessions）。
-	Retake bool
-	// At 这次作答计入的时间（取所在组的交卷时间）。
-	At time.Time
-	// SelfGraded 所在组是学生账号自批的默写单（spec 0006）。
-	SelfGraded bool
-}
-
-// CoverageMemory 某个词的记忆状态（没学过为 nil）。
-type CoverageMemory struct {
-	Stability  float64
-	LastReview *time.Time
-}
-
-// isFormal 是否正式测试作答。
-func (a CoverageAnswer) isFormal() bool {
-	return IsTestKind(a.Kind) && a.Phase == "test" && a.Attempt == 1 && !a.Retake
-}
-
-// WordCoverage 一个词的覆盖状态。
-func WordCoverage(answers []CoverageAnswer, memory *CoverageMemory) CoverageStatus {
-	s, _ := WordCoverageDetail(answers, memory)
-	return s
-}
-
-// WordCoverageDetail 一个词的覆盖状态，以及决定这个状态的那次正式测试（最近一次）是否自批（spec 0006）。
-// 未测时自批为 false；最近一次答错后靠记忆达到已掌握算「会了」的，仍以那次答错的组判定是否自批。
-func WordCoverageDetail(answers []CoverageAnswer, memory *CoverageMemory) (CoverageStatus, bool) {
-	type result struct {
-		at         time.Time
-		order      int
-		correct    bool
-		selfGraded bool
-	}
-	bySession := map[string]*result{}
-	for i, a := range answers {
-		if !a.isFormal() {
-			continue
-		}
-		r := bySession[a.SessionID]
-		if r == nil {
-			r = &result{at: a.At, order: i, correct: true, selfGraded: a.SelfGraded}
-			bySession[a.SessionID] = r
-		}
-		if a.At.After(r.at) {
-			r.at = a.At
-		}
-		if i > r.order {
-			r.order = i
-		}
-		if !a.Correct {
-			r.correct = false
-		}
-	}
-	var last *result
-	for _, r := range bySession {
-		if last == nil || r.at.After(last.at) || (r.at.Equal(last.at) && r.order > last.order) {
-			last = r
-		}
-	}
-	switch {
-	case last == nil:
-		return CoverageUntested, false
-	case last.correct:
-		return CoverageKnown, last.selfGraded
-	case memory != nil && MasteryLevel(memory.Stability) == "mastered" && memory.LastReview != nil && memory.LastReview.After(last.at):
-		return CoverageKnown, last.selfGraded
+// CoverageStatusOf 五级状态对应的三档。
+func CoverageStatusOf(stage string) CoverageStatus {
+	switch stage {
+	case StageUntested, "":
+		return CoverageUntested
+	case StageMissed:
+		return CoverageLearning
 	default:
-		return CoverageLearning, last.selfGraded
+		return CoverageKnown
 	}
 }
 
-// CountSelfGraded 目标词（按书去重）里已测、且最近一次正式测试是自批的词数（班级概览「目标覆盖」旁的自批比例 = 它 / 已测）。
-func CountSelfGraded(status map[string]CoverageStatus, selfGraded map[string]bool, books []CoverageBook) int {
+// MemoryAction 结算（及补算）时对一个词的记忆做什么。
+type MemoryAction int
+
+const (
+	MemoryNone MemoryAction = iota
+	// MemoryCreateLearn 新学建卡（封顶到下个学习日）。
+	MemoryCreateLearn
+	// MemoryCreate 非新学组里第一次见就答对（评分「记得」）：建卡，不占每日计划的新词额度。
+	MemoryCreate
+	// MemoryUpdate 按评分更新已有记忆。
+	MemoryUpdate
+)
+
+// MemoryActionFor 一个词这一组该怎么动记忆（调用方先保证这是该词当天的证据、且当天还没更新过记忆）：
+// 新学组只给没有记忆的词建卡；其余组有记忆就更新，没有记忆时只有答对（Good）才建卡，答错留在新词池等新学。
+func MemoryActionFor(kind string, hasMemory bool, rating Rating) MemoryAction {
+	if rating == 0 {
+		return MemoryNone
+	}
+	if kind == "learn" {
+		if hasMemory {
+			return MemoryNone
+		}
+		return MemoryCreateLearn
+	}
+	if hasMemory {
+		return MemoryUpdate
+	}
+	if rating == RatingGood {
+		return MemoryCreate
+	}
+	return MemoryNone
+}
+
+// CountSelfGraded 目标词（按书去重）里已接触、且决定状态的最近一条证据是自批的词数（班级概览「目标覆盖」旁的自批比例 = 它 / 已测）。
+func CountSelfGraded(stages map[string]WordStageInfo, books []CoverageBook) int {
 	n := 0
 	for _, w := range CoverageWordOrder(books) {
-		st := status[w]
-		if (st == CoverageKnown || st == CoverageLearning) && selfGraded[w] {
+		st := stages[w]
+		if st.Stage != "" && st.Stage != StageUntested && st.SelfGraded {
 			n++
 		}
 	}
 	return n
 }
 
-// CoverageCounts 一组目标词的数字：Tested = Known + Learning，Target = Tested + Untested。
+// CoverageCounts 一组目标词的数字：Tested = Known + Learning，Target = Tested + Untested；
+// Known = Fresh + Consolidating + Mastered；Learning 是「没记住」；Due 是带「待复查」标记的词数（spec 0009 新增）。
 type CoverageCounts struct {
-	Target   int `json:"target"`
-	Tested   int `json:"tested"`
-	Known    int `json:"known"`
-	Learning int `json:"learning"`
-	Untested int `json:"untested"`
+	Target        int `json:"target"`
+	Tested        int `json:"tested"`
+	Known         int `json:"known"`
+	Learning      int `json:"learning"`
+	Untested      int `json:"untested"`
+	Fresh         int `json:"fresh"`
+	Consolidating int `json:"consolidating"`
+	Mastered      int `json:"mastered"`
+	Due           int `json:"due"`
 }
 
-func (c *CoverageCounts) add(s CoverageStatus) {
+func (c *CoverageCounts) add(s WordStageInfo) {
 	c.Target++
-	switch s {
-	case CoverageKnown:
-		c.Known++
-		c.Tested++
-	case CoverageLearning:
+	switch s.Stage {
+	case StageMissed:
 		c.Learning++
 		c.Tested++
+	case StageFresh, StageConsolidating, StageMastered:
+		c.Known++
+		c.Tested++
+		switch s.Stage {
+		case StageFresh:
+			c.Fresh++
+		case StageConsolidating:
+			c.Consolidating++
+		default:
+			c.Mastered++
+		}
 	default:
 		c.Untested++
+	}
+	if s.Due {
+		c.Due++
 	}
 }
 
@@ -190,8 +337,8 @@ type CoverageBookCounts struct {
 }
 
 // SummarizeCoverage 汇总每本书与目标合计：书内按 wordId 去重；合计跨书去重。
-// status 里没有的词算未测。
-func SummarizeCoverage(status map[string]CoverageStatus, books []CoverageBook) (CoverageCounts, []CoverageBookCounts) {
+// stages 里没有的词算未接触。
+func SummarizeCoverage(stages map[string]WordStageInfo, books []CoverageBook) (CoverageCounts, []CoverageBookCounts) {
 	var total CoverageCounts
 	per := make([]CoverageBookCounts, 0, len(books))
 	all := map[string]bool{}
@@ -203,7 +350,7 @@ func SummarizeCoverage(status map[string]CoverageStatus, books []CoverageBook) (
 				continue
 			}
 			seen[w] = true
-			st := status[w]
+			st := stages[w]
 			row.add(st)
 			if !all[w] {
 				all[w] = true

@@ -667,8 +667,10 @@ export interface ClassOverview {
 
 // ---------------- 目标词书与覆盖进度（spec 0003） ----------------
 
-/** 每个目标词的覆盖状态：未测 / 要学 / 会了 */
+/** 每个目标词的覆盖状态（三档，接口兼容）：未接触 / 没记住 / 记住了 */
 export type CoverageStatus = "untested" | "learning" | "known";
+/** 五级词状态（spec 0009）：未接触 / 没记住 / 刚记住 / 巩固中 / 已掌握 */
+export type WordStage = "untested" | "missed" | "fresh" | "consolidating" | "mastered";
 /** 单词单 target 来源可选的状态 */
 export type TargetSheetStatus = "untested" | "learning";
 
@@ -698,10 +700,19 @@ export interface MyTargetBooks {
 
 export interface CoverageCounts {
   target: number;
+  /** 已接触 = known + learning */
   tested: number;
+  /** 记住了 = fresh + consolidating + mastered */
   known: number;
+  /** 没记住 */
   learning: number;
+  /** 未接触 */
   untested: number;
+  /** 五级细分（spec 0009）：刚记住 / 巩固中 / 已掌握，以及带「待复查」标记的词数 */
+  fresh: number;
+  consolidating: number;
+  mastered: number;
+  due: number;
 }
 
 /** GET /records/coverage */
@@ -719,6 +730,10 @@ export interface CoverageWord {
   partOfSpeech: string | null;
   definition: string;
   status: CoverageStatus;
+  /** 五级状态与标记（spec 0009） */
+  stage: WordStage;
+  due: boolean;
+  forgetting: boolean;
 }
 
 /** 班级概览里学生的覆盖数字 */
@@ -747,7 +762,7 @@ export interface RecordsSummary {
   activeDays30: number;
   lastActiveDay: string | null;
   learnedWords: number;
-  mastery: { learning: number; consolidating: number; mastered: number };
+  mastery: { missed: number; learning: number; consolidating: number; mastered: number };
   dueToday: number;
   today: { newWords: number; reviewedWords: number; answers: number; minutes: number; newLeft: number; reviewLeft: number; pendingTests: number };
   accuracy7d: Accuracy;
@@ -821,8 +836,9 @@ export interface SessionRecordDetail {
   sentences?: SessionDetailSentence[];
 }
 
-export type MasteryLevel = "learning" | "consolidating" | "mastered";
-export type WordFilter = "all" | "due" | "difficult" | "mastered" | "consolidating" | "learning";
+/** 学习记录里的分层（有记忆的词）：没记住 / 刚记住（历史命名 learning）/ 巩固中 / 已掌握（spec 0009） */
+export type MasteryLevel = "missed" | "learning" | "consolidating" | "mastered";
+export type WordFilter = "all" | "due" | "difficult" | "mastered" | "consolidating" | "learning" | "missed";
 
 export interface MemoryWord {
   wordId: string;
@@ -836,6 +852,8 @@ export interface MemoryWord {
   difficulty: number;
   level: MasteryLevel;
   levelLabel: string;
+  /** 可能忘了：已到期且回忆概率低于 70%（spec 0009） */
+  forgetting: boolean;
   reps: number;
   lapses: number;
   lastReview: string | null;
@@ -856,7 +874,7 @@ export interface WordHistory {
     level: MasteryLevel;
     levelLabel: string;
   } | null;
-  reviewLogs: { id: string; rating: number; stateBefore: number; stabilityAfter: number; difficultyAfter: number; dueAfter: string; reviewedAt: string; dayKey: string; sessionId: string | null }[];
+  reviewLogs: { id: string; rating: number; stateBefore: number; stabilityAfter: number; difficultyAfter: number; dueAfter: string; reviewedAt: string; dayKey: string; sessionId: string | null; source: string | null }[];
   answers: { id: string; sessionId: string; mode: AnswerMode; phase: string; attempt: number; correct: boolean; userAnswer: string | null; hintUsed: boolean; dontKnow: boolean; dayKey: string; createdAt: string }[];
 }
 

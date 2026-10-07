@@ -3,14 +3,14 @@ import { login } from "../support/helpers";
 import { apiOk, importBook, letters, newClassWithStudent, newTeacher, wordIds } from "../support/school";
 
 /**
- * 目标词书与覆盖进度（spec 0003）：老师给班级设置目标 → 学生今日页出现进度卡 → 从「测未测的词」生成单词单并在线测完
+ * 目标词书与覆盖进度（spec 0003）：老师给班级设置目标 → 学生今日页出现进度卡 → 从「测未接触的词」生成单词单并在线测完
  * → 进度变化 → 老师在概览和学生详情里看到同样的数字。
  * 新老师、班级、学生、4 个词的词书由 API 准备；设置目标、进度卡、出单、开测走页面，作答走 API（与 word-sheet 用例相同）。
  */
 test.describe("目标词书与覆盖进度", () => {
   test.setTimeout(120_000);
 
-  test("老师设目标 → 学生今日进度卡 → 测未测的词 → 进度变化 → 老师概览与学生详情一致", async ({ browser }) => {
+  test("老师设目标 → 学生今日进度卡 → 测未接触的词 → 进度变化 → 老师概览与学生详情一致", async ({ browser }) => {
     const teacher = await newTeacher("覆盖老师");
     const { classId, student } = await newClassWithStudent(teacher, "覆盖班", "覆盖同学");
     const tag = letters();
@@ -40,12 +40,12 @@ test.describe("目标词书与覆盖进度", () => {
     await login(sp, student.email);
     await expect(sp).toHaveURL(/\/today/);
     const card = sp.getByLabel("目标进度");
-    await expect(card).toContainText("已测 0 / 4");
-    await expect(card).toContainText("会了 0 · 要学 0 · 未测 4");
-    await expect(card.getByRole("button", { name: "练要学的词" })).toBeDisabled();
+    await expect(card).toContainText("已接触 0 / 4");
+    await expect(card).toContainText("已掌握 0 · 巩固中 0 · 刚记住 0 · 没记住 0 · 未接触 4");
+    await expect(card.getByRole("button", { name: "练没记住的词" })).toBeDisabled();
 
-    // 测未测的词 → 生成页预选「目标：未测的词」→ 生成并打印
-    await card.getByRole("button", { name: "测未测的词" }).click();
+    // 测未接触的词 → 生成页预选「目标：未接触的词」→ 生成并打印
+    await card.getByRole("button", { name: "测未接触的词" }).click();
     await sp.waitForURL(/\/sheets\/new/);
     for (const s of spellings) await expect(sp.getByText(s, { exact: true }).first()).toBeVisible();
     await sp.getByRole("button", { name: /生成并打印/ }).click();
@@ -70,18 +70,18 @@ test.describe("目标词书与覆盖进度", () => {
 
     // 进度变化
     await sp.goto("/today");
-    await expect(card).toContainText("已测 4 / 4");
-    await expect(card).toContainText("会了 3 · 要学 1 · 未测 0");
-    await expect(card.getByRole("button", { name: "测未测的词" })).toBeDisabled();
-    await expect(card.getByRole("button", { name: "练要学的词" })).toBeEnabled();
+    await expect(card).toContainText("已接触 4 / 4");
+    await expect(card).toContainText("已掌握 0 · 巩固中 0 · 刚记住 3 · 没记住 1 · 未接触 0");
+    await expect(card.getByRole("button", { name: "测未接触的词" })).toBeDisabled();
+    await expect(card.getByRole("button", { name: "练没记住的词" })).toBeEnabled();
 
-    // 老师：概览的「目标覆盖」「要学」，学生详情的分书进度
+    // 老师：概览的「目标覆盖」「没记住」，学生详情的分书进度
     await tp.goto(`/classes/${classId}`);
     const row = tp.getByRole("row", { name: /覆盖同学/ });
     await expect(row).toContainText("100%");
-    await expect(row.getByTitle("已测 4/4 词")).toBeVisible();
+    await expect(row.getByTitle("已接触 4/4 词")).toBeVisible();
     await tp.goto(`/classes/${classId}/students/${student.id}`);
-    await expect(tp.getByText("已测 4 / 4 · 会了 3 · 要学 1 · 未测 0")).toBeVisible();
+    await expect(tp.getByText("已接触 4 / 4 · 已掌握 0 · 巩固中 0 · 刚记住 3 · 没记住 1 · 未接触 0")).toBeVisible();
     await tp.getByRole("button", { name: new RegExp(book.name) }).click();
     await expect(tp.getByText(spellings[3]).first()).toBeVisible();
 

@@ -6,117 +6,177 @@ import (
 	"time"
 )
 
-func TestFormalTestSessions(t *testing.T) {
-	p1, p2, sh := "p1", "p2", "sh1"
-	at := func(h int) time.Time { return time.Date(2026, 10, 1, h, 0, 0, 0, time.UTC) }
-	// b：同一计划重测；e：同一张单子重测；f、g：计划已删除，无法判断重测，各自算正式；
-	// h：不同类型的 key 不相互影响；i：非检测类组不在结果里
-	sessions := []TestSessionRef{
-		{ID: "a", Kind: "test", GroupKey: &p1, CompletedAt: at(1)},
-		{ID: "b", Kind: "test", GroupKey: &p1, CompletedAt: at(2)},
-		{ID: "c", Kind: "test", GroupKey: &p2, CompletedAt: at(3)},
-		{ID: "d", Kind: "sheet", GroupKey: &sh, CompletedAt: at(4)},
-		{ID: "e", Kind: "sheet", GroupKey: &sh, CompletedAt: at(5)},
-		{ID: "f", Kind: "test", GroupKey: nil, CompletedAt: at(6)},
-		{ID: "g", Kind: "test", GroupKey: nil, CompletedAt: at(7)},
-		{ID: "h", Kind: "sheet", GroupKey: &p1, CompletedAt: at(8)},
-		{ID: "i", Kind: "review", GroupKey: nil, CompletedAt: at(9)},
-	}
-	got := FormalTestSessions(sessions)
-	want := map[string]bool{"a": true, "c": true, "d": true, "f": true, "g": true, "h": true}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("formal = %v", got)
-	}
-	// 输入顺序不按完成时间时，仍以先交卷的为正式
-	rev := []TestSessionRef{sessions[1], sessions[0]}
-	if got := FormalTestSessions(rev); !reflect.DeepEqual(got, map[string]bool{"a": true}) {
-		t.Fatalf("乱序 = %v", got)
-	}
-}
+func evAt(d, h int) time.Time { return time.Date(2026, 10, d, h, 0, 0, 0, time.UTC) }
 
-func TestWordCoverage(t *testing.T) {
-	at := func(d int) time.Time { return time.Date(2026, 10, d, 8, 0, 0, 0, time.UTC) }
-	ptr := func(t time.Time) *time.Time { return &t }
-	ans := func(session string, d int, correct bool) CoverageAnswer {
-		return CoverageAnswer{SessionID: session, Kind: "test", Phase: "test", Attempt: 1, Correct: correct, At: at(d)}
+func evDay(d int) string { return time.Date(2026, 10, d, 0, 0, 0, 0, time.UTC).Format("2006-01-02") }
+
+func TestBuildEvidence(t *testing.T) {
+	sh := "sheet1"
+	sess := func(id, kind string, d, h int) EvidenceSession {
+		return EvidenceSession{ID: id, Kind: kind, Day: evDay(d), At: evAt(d, h)}
+	}
+	sheet := func(id string, d, h int, self bool) EvidenceSession {
+		s := sess(id, "sheet", d, h)
+		s.SheetID = &sh
+		s.SelfGraded = self
+		return s
+	}
+	ans := func(session, word, mode, phase string, attempt int, correct bool) EvidenceAnswer {
+		return EvidenceAnswer{SessionID: session, WordID: word, Mode: mode, Phase: phase, Attempt: attempt, Correct: correct}
+	}
+	type got struct {
+		session string
+		correct bool
 	}
 	cases := []struct {
-		name    string
-		answers []CoverageAnswer
-		memory  *CoverageMemory
-		want    CoverageStatus
+		name     string
+		sessions []EvidenceSession
+		answers  []EvidenceAnswer
+		want     map[string][]got
 	}{
-		{"没有作答", nil, nil, CoverageUntested},
-		{"没有作答但记忆已掌握也算未测", nil, &CoverageMemory{Stability: 30, LastReview: ptr(at(1))}, CoverageUntested},
-		{"只答对", []CoverageAnswer{ans("s1", 1, true)}, nil, CoverageKnown},
-		{"只答错", []CoverageAnswer{ans("s1", 1, false)}, nil, CoverageLearning},
-		{"错后答对", []CoverageAnswer{ans("s1", 1, false), ans("s2", 2, true)}, nil, CoverageKnown},
-		{"对后答错", []CoverageAnswer{ans("s1", 1, true), ans("s2", 2, false)}, nil, CoverageLearning},
-		{"按时间而不是输入顺序取最近一次", []CoverageAnswer{ans("s2", 2, false), ans("s1", 1, true)}, nil, CoverageLearning},
-		{"错后记忆达到已掌握", []CoverageAnswer{ans("s1", 1, false)}, &CoverageMemory{Stability: 21, LastReview: ptr(at(3))}, CoverageKnown},
-		{"错后记忆巩固中仍要学", []CoverageAnswer{ans("s1", 1, false)}, &CoverageMemory{Stability: 20.9, LastReview: ptr(at(3))}, CoverageLearning},
-		{"已掌握但复习早于答错仍要学", []CoverageAnswer{ans("s1", 2, false)}, &CoverageMemory{Stability: 40, LastReview: ptr(at(1))}, CoverageLearning},
-		{"已掌握但没有复习时间仍要学", []CoverageAnswer{ans("s1", 2, false)}, &CoverageMemory{Stability: 40}, CoverageLearning},
-		{"已掌握后又答错退回要学", []CoverageAnswer{ans("s1", 1, false), ans("s2", 5, false)}, &CoverageMemory{Stability: 30, LastReview: ptr(at(3))}, CoverageLearning},
-		{"同一组多题型有一题错即错", []CoverageAnswer{
-			{SessionID: "s1", Kind: "test", Phase: "test", Attempt: 1, Correct: true, At: at(1)},
-			{SessionID: "s1", Kind: "test", Phase: "test", Attempt: 1, Correct: false, At: at(1)},
-		}, nil, CoverageLearning},
-		{"同一组内的重测（attempt>1）不计", []CoverageAnswer{
-			ans("s1", 1, false),
-			{SessionID: "s1", Kind: "test", Phase: "test", Attempt: 2, Correct: true, At: at(1)},
-		}, nil, CoverageLearning},
-		{"重测组（重新测同一计划）不计", []CoverageAnswer{
-			ans("s1", 1, false),
-			{SessionID: "s2", Kind: "test", Phase: "test", Attempt: 1, Correct: true, At: at(2), Retake: true},
-		}, nil, CoverageLearning},
-		{"只有重测组算未测", []CoverageAnswer{{SessionID: "s2", Kind: "sheet", Phase: "test", Attempt: 1, Correct: true, At: at(2), Retake: true}}, nil, CoverageUntested},
-		{"练习不算正式测试", []CoverageAnswer{
-			{SessionID: "l1", Kind: "learn", Phase: "practice", Attempt: 1, Correct: true, At: at(1)},
-			{SessionID: "r1", Kind: "review", Phase: "practice", Attempt: 1, Correct: false, At: at(2)},
-			{SessionID: "d1", Kind: "drill", Phase: "practice", Attempt: 1, Correct: false, At: at(3)},
-		}, nil, CoverageUntested},
-		{"单词单测试与检测同口径", []CoverageAnswer{{SessionID: "w1", Kind: "sheet", Phase: "test", Attempt: 1, Correct: true, At: at(1)}}, nil, CoverageKnown},
-		{"检测里非 test 阶段不计", []CoverageAnswer{{SessionID: "s1", Kind: "test", Phase: "practice", Attempt: 1, Correct: true, At: at(1)}}, nil, CoverageUntested},
+		{"检测计划连考两组：都是证据（不再有重测）",
+			[]EvidenceSession{sess("t1", "test", 1, 8), sess("t2", "test", 2, 8)},
+			[]EvidenceAnswer{ans("t1", "a", "recognition", "test", 1, false), ans("t2", "a", "recognition", "test", 1, true), ans("t2", "b", "recognition", "test", 1, true)},
+			map[string][]got{"a": {{"t1", false}, {"t2", true}}, "b": {{"t2", true}}}},
+		{"同一学习日只取完成最早的一组",
+			[]EvidenceSession{sess("t2", "test", 1, 10), sess("t1", "test", 1, 8)},
+			[]EvidenceAnswer{ans("t2", "a", "recognition", "test", 1, true), ans("t1", "a", "recognition", "test", 1, false)},
+			map[string][]got{"a": {{"t1", false}}}},
+		{"同一张单词单再测不算，换一天也不算",
+			[]EvidenceSession{sheet("w1", 1, 8, false), sheet("w2", 3, 8, false)},
+			[]EvidenceAnswer{ans("w1", "a", "recognition", "test", 1, false), ans("w2", "a", "recognition", "test", 1, true)},
+			map[string][]got{"a": {{"w1", false}}}},
+		{"巩固阶段、第二次作答不算",
+			[]EvidenceSession{sess("r1", "review", 1, 8)},
+			[]EvidenceAnswer{ans("r1", "a", "recognition", "practice", 1, false), ans("r1", "a", "recognition", "consolidate", 1, true), ans("r1", "a", "recognition", "practice", 2, true)},
+			map[string][]got{"a": {{"r1", false}}}},
+		{"多个题型有一题错即错",
+			[]EvidenceSession{sess("l1", "learn", 1, 8)},
+			[]EvidenceAnswer{ans("l1", "a", "recognition", "practice", 1, true), ans("l1", "a", "spelling", "practice", 1, false)},
+			map[string][]got{"a": {{"l1", false}}}},
+		{"检测类组的练习阶段、练习类组的检测阶段都不算",
+			[]EvidenceSession{sess("t1", "test", 1, 8), sess("d1", "drill", 2, 8)},
+			[]EvidenceAnswer{ans("t1", "a", "recognition", "practice", 1, true), ans("d1", "a", "recognition", "test", 1, true)},
+			map[string][]got{}},
+		{"不在已完成组里的作答忽略；错词强化是证据",
+			[]EvidenceSession{sess("d1", "drill", 1, 8)},
+			[]EvidenceAnswer{ans("x", "a", "recognition", "test", 1, true), ans("d1", "b", "spelling", "practice", 1, true)},
+			map[string][]got{"b": {{"d1", true}}}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := WordCoverage(c.answers, c.memory); got != c.want {
-				t.Fatalf("got %s want %s", got, c.want)
+			ev := BuildEvidence(c.sessions, c.answers)
+			out := map[string][]got{}
+			for w, list := range ev {
+				for _, e := range list {
+					out[w] = append(out[w], got{e.SessionID, e.Correct})
+				}
+			}
+			if !reflect.DeepEqual(out, c.want) {
+				t.Fatalf("got %v want %v", out, c.want)
+			}
+		})
+	}
+	// 评分要用的首次作答随证据带出
+	ev := BuildEvidence([]EvidenceSession{sess("l1", "learn", 1, 8)}, []EvidenceAnswer{
+		ans("l1", "a", "recognition", "practice", 1, true), {SessionID: "l1", WordID: "a", Mode: "spelling", Phase: "practice", Attempt: 1, Correct: true, HintUsed: true},
+	})
+	if want := []FirstAttempt{{Mode: "recognition", Correct: true}, {Mode: "spelling", Correct: true, HintUsed: true}}; !reflect.DeepEqual(ev["a"][0].Attempts, want) {
+		t.Fatalf("attempts = %+v", ev["a"][0].Attempts)
+	}
+}
+
+func TestWordStage(t *testing.T) {
+	now := evAt(10, 12)
+	dayEnd := evAt(11, 0)
+	ptr := func(t time.Time) *time.Time { return &t }
+	e := func(d int, correct bool) Evidence {
+		return Evidence{SessionID: "s", Day: evDay(d), At: evAt(d, 8), Correct: correct}
+	}
+	mem := func(st float64, due time.Time, last *time.Time) *StageMemory {
+		return &StageMemory{Stability: st, Due: due, LastReview: last}
+	}
+	future := evAt(20, 0)
+	cases := []struct {
+		name string
+		ev   []Evidence
+		mem  *StageMemory
+		want WordStageInfo
+	}{
+		{"没有证据没有记忆：未接触", nil, nil, WordStageInfo{Stage: StageUntested}},
+		{"答错、没有记忆：没记住", []Evidence{e(1, false)}, nil, WordStageInfo{Stage: StageMissed}},
+		{"答对、没有记忆：刚记住", []Evidence{e(1, true)}, nil, WordStageInfo{Stage: StageFresh}},
+		{"最近一次答错，记忆再稳也是没记住", []Evidence{e(1, true), e(9, false)}, mem(40, future, ptr(evAt(9, 8))), WordStageInfo{Stage: StageMissed}},
+		{"错后答对，按稳定度：巩固中", []Evidence{e(1, false), e(5, true)}, mem(10, future, ptr(evAt(5, 8))), WordStageInfo{Stage: StageConsolidating}},
+		{"已掌握", []Evidence{e(1, true)}, mem(21, future, ptr(evAt(1, 8))), WordStageInfo{Stage: StageMastered}},
+		{"稳定度不到 7 天：刚记住", []Evidence{e(9, true)}, mem(6.9, future, ptr(evAt(9, 8))), WordStageInfo{Stage: StageFresh}},
+		{"没有证据但有记忆（导入的旧数据）：按稳定度", nil, mem(30, future, ptr(evAt(1, 8))), WordStageInfo{Stage: StageMastered}},
+		{"今天到期：待复查，不降档", []Evidence{e(1, true)}, mem(30, evAt(10, 20), ptr(evAt(1, 8))), WordStageInfo{Stage: StageMastered, Due: true}},
+		{"超期不久：只是待复查", []Evidence{e(1, true)}, mem(2, evAt(3, 0), ptr(evAt(1, 8))), WordStageInfo{Stage: StageFresh, Due: true}},
+		{"超期很久：可能忘了", []Evidence{e(1, true)}, mem(2, evAt(3, 0), ptr(time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC))), WordStageInfo{Stage: StageFresh, Due: true, Forgetting: true}},
+		{"自批标记取最近一条证据", []Evidence{e(1, true), {SessionID: "w", At: evAt(2, 8), Correct: true, SelfGraded: true}}, nil, WordStageInfo{Stage: StageFresh, SelfGraded: true}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := WordStage(c.ev, c.mem, now, dayEnd); got != c.want {
+				t.Fatalf("got %+v want %+v", got, c.want)
 			}
 		})
 	}
 }
 
-func TestWordCoverageDetailSelfGraded(t *testing.T) {
-	at := func(d int) time.Time { return time.Date(2026, 10, d, 8, 0, 0, 0, time.UTC) }
-	ptr := func(t time.Time) *time.Time { return &t }
-	ans := func(session string, d int, correct, self bool) CoverageAnswer {
-		return CoverageAnswer{SessionID: session, Kind: "sheet", Phase: "test", Attempt: 1, Correct: correct, At: at(d), SelfGraded: self}
+func TestRetrievability(t *testing.T) {
+	last := evAt(1, 8)
+	m := StageMemory{Stability: 10, LastReview: &last}
+	if r := Retrievability(m, evAt(1, 20)); r != 1 {
+		t.Fatalf("当天 = %v", r)
 	}
+	// 隔了稳定度那么多天，回忆概率约 90%
+	if r := Retrievability(m, evAt(11, 8)); r < 0.89 || r > 0.91 {
+		t.Fatalf("隔 10 天 = %v", r)
+	}
+	if r := Retrievability(StageMemory{Stability: 10}, evAt(11, 8)); r != 0 {
+		t.Fatalf("没有复习时间 = %v", r)
+	}
+}
+
+func TestStageMapping(t *testing.T) {
+	want := map[string]CoverageStatus{StageUntested: CoverageUntested, "": CoverageUntested, StageMissed: CoverageLearning,
+		StageFresh: CoverageKnown, StageConsolidating: CoverageKnown, StageMastered: CoverageKnown}
+	for st, w := range want {
+		if got := CoverageStatusOf(st); got != w {
+			t.Errorf("%q → %s want %s", st, got, w)
+		}
+	}
+	if StageLevel(StageFresh) != "learning" || StageLevel(StageMissed) != "missed" || StageLevel(StageMastered) != "mastered" {
+		t.Fatal("StageLevel")
+	}
+}
+
+func TestMemoryActionFor(t *testing.T) {
 	cases := []struct {
-		name       string
-		answers    []CoverageAnswer
-		memory     *CoverageMemory
-		wantStatus CoverageStatus
-		wantSelf   bool
+		kind   string
+		hasMem bool
+		rating Rating
+		want   MemoryAction
 	}{
-		{"未测不算自批", nil, nil, CoverageUntested, false},
-		{"自批答对", []CoverageAnswer{ans("s1", 1, true, true)}, nil, CoverageKnown, true},
-		{"自批答错", []CoverageAnswer{ans("s1", 1, false, true)}, nil, CoverageLearning, true},
-		{"老师批改", []CoverageAnswer{ans("s1", 1, true, false)}, nil, CoverageKnown, false},
-		{"自批后老师复核：取最近一次", []CoverageAnswer{ans("s1", 1, true, true), ans("s2", 2, false, false)}, nil, CoverageLearning, false},
-		{"老师批改后又自批：取最近一次", []CoverageAnswer{ans("s1", 1, true, false), ans("s2", 2, true, true)}, nil, CoverageKnown, true},
-		{"自批答错后记忆达到已掌握：仍按那次自批", []CoverageAnswer{ans("s1", 1, false, true)}, &CoverageMemory{Stability: 30, LastReview: ptr(at(3))}, CoverageKnown, true},
-		{"自批的重测组不计", []CoverageAnswer{ans("s1", 1, true, false), {SessionID: "s2", Kind: "sheet", Phase: "test", Attempt: 1, Correct: true, At: at(2), Retake: true, SelfGraded: true}}, nil, CoverageKnown, false},
+		{"learn", false, RatingHard, MemoryCreateLearn},
+		{"learn", false, RatingAgain, MemoryCreateLearn},
+		{"learn", true, RatingHard, MemoryNone},
+		{"review", true, RatingAgain, MemoryUpdate},
+		{"drill", true, RatingGood, MemoryUpdate},
+		{"test", true, RatingAgain, MemoryUpdate},
+		{"test", false, RatingGood, MemoryCreate},
+		{"sheet", false, RatingGood, MemoryCreate},
+		{"drill", false, RatingGood, MemoryCreate},
+		{"test", false, RatingAgain, MemoryNone},
+		{"drill", false, RatingHard, MemoryNone},
+		{"review", true, 0, MemoryNone},
 	}
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			st, self := WordCoverageDetail(c.answers, c.memory)
-			if st != c.wantStatus || self != c.wantSelf {
-				t.Fatalf("got %s %v want %s %v", st, self, c.wantStatus, c.wantSelf)
-			}
-		})
+		if got := MemoryActionFor(c.kind, c.hasMem, c.rating); got != c.want {
+			t.Errorf("%s mem=%v rating=%v: got %v want %v", c.kind, c.hasMem, c.rating, got, c.want)
+		}
 	}
 }
 
@@ -125,20 +185,20 @@ func TestCountSelfGraded(t *testing.T) {
 		{BookID: "b1", WordIDs: []string{"a", "b", "c", "a"}},
 		{BookID: "b2", WordIDs: []string{"a", "d", "e"}},
 	}
-	status := map[string]CoverageStatus{"a": CoverageKnown, "b": CoverageLearning, "c": CoverageKnown, "d": CoverageUntested}
+	st := func(stage string, self bool) WordStageInfo { return WordStageInfo{Stage: stage, SelfGraded: self} }
 	cases := []struct {
-		name string
-		self map[string]bool
-		want int
+		name   string
+		stages map[string]WordStageInfo
+		want   int
 	}{
-		{"没有自批", nil, 0},
-		{"跨书重复只算一次", map[string]bool{"a": true}, 1},
-		{"会了和要学都算", map[string]bool{"a": true, "b": true}, 2},
-		{"未测的和不在目标里的不算", map[string]bool{"d": true, "e": true, "x": true, "c": true}, 1},
+		{"没有自批", map[string]WordStageInfo{"a": st(StageFresh, false)}, 0},
+		{"跨书重复只算一次", map[string]WordStageInfo{"a": st(StageFresh, true)}, 1},
+		{"各档都算", map[string]WordStageInfo{"a": st(StageMastered, true), "b": st(StageMissed, true)}, 2},
+		{"未接触的和不在目标里的不算", map[string]WordStageInfo{"d": st(StageUntested, true), "x": st(StageFresh, true), "c": st(StageFresh, true)}, 1},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := CountSelfGraded(status, c.self, books); got != c.want {
+			if got := CountSelfGraded(c.stages, books); got != c.want {
 				t.Fatalf("got %d want %d", got, c.want)
 			}
 		})
@@ -146,21 +206,23 @@ func TestCountSelfGraded(t *testing.T) {
 }
 
 func TestSummarizeCoverage(t *testing.T) {
-	status := map[string]CoverageStatus{"a": CoverageKnown, "b": CoverageLearning, "c": CoverageKnown, "x": CoverageLearning}
+	stages := map[string]WordStageInfo{
+		"a": {Stage: StageMastered, Due: true}, "b": {Stage: StageMissed}, "c": {Stage: StageFresh}, "x": {Stage: StageMissed},
+	}
 	// b1 书内重复只算一次；b2 的 a 与 b1 重叠，合计只算一次
 	books := []CoverageBook{
 		{BookID: "b1", Name: "七上", WordIDs: []string{"a", "b", "d", "a"}},
 		{BookID: "b2", Name: "中考", WordIDs: []string{"a", "c", "e"}},
 		{BookID: "b3", Name: "空书", WordIDs: nil},
 	}
-	total, per := SummarizeCoverage(status, books)
-	wantTotal := CoverageCounts{Target: 5, Tested: 3, Known: 2, Learning: 1, Untested: 2}
+	total, per := SummarizeCoverage(stages, books)
+	wantTotal := CoverageCounts{Target: 5, Tested: 3, Known: 2, Learning: 1, Untested: 2, Fresh: 1, Mastered: 1, Due: 1}
 	if total != wantTotal {
 		t.Fatalf("total = %+v", total)
 	}
 	want := []CoverageBookCounts{
-		{BookID: "b1", Name: "七上", CoverageCounts: CoverageCounts{Target: 3, Tested: 2, Known: 1, Learning: 1, Untested: 1}},
-		{BookID: "b2", Name: "中考", CoverageCounts: CoverageCounts{Target: 3, Tested: 2, Known: 2, Learning: 0, Untested: 1}},
+		{BookID: "b1", Name: "七上", CoverageCounts: CoverageCounts{Target: 3, Tested: 2, Known: 1, Learning: 1, Untested: 1, Mastered: 1, Due: 1}},
+		{BookID: "b2", Name: "中考", CoverageCounts: CoverageCounts{Target: 3, Tested: 2, Known: 2, Untested: 1, Fresh: 1, Mastered: 1, Due: 1}},
 		{BookID: "b3", Name: "空书", CoverageCounts: CoverageCounts{}},
 	}
 	if !reflect.DeepEqual(per, want) {

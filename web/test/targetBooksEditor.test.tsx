@@ -49,11 +49,11 @@ describe("TargetBooksEditor", () => {
 });
 
 describe("CoverageBar", () => {
-  it("按会了 / 要学 / 未测分段，数字写在无障碍标签里", async () => {
+  it("按已掌握 / 巩固中 / 刚记住 / 没记住 / 未接触分段，数字写在无障碍标签里，0 的段不画", async () => {
     const el = document.createElement("div");
-    await act(() => render(<CoverageBar counts={{ known: 2000, learning: 800, untested: 900 }} />, el));
-    expect(el.querySelector('[role="img"]')!.getAttribute("aria-label")).toBe("会了 2000，要学 800，未测 900");
-    expect(el.querySelectorAll('[role="img"] > div').length).toBe(3);
+    await act(() => render(<CoverageBar counts={{ mastered: 100, consolidating: 0, fresh: 1900, learning: 800, untested: 900 }} />, el));
+    expect(el.querySelector('[role="img"]')!.getAttribute("aria-label")).toBe("已掌握 100，巩固中 0，刚记住 1900，没记住 800，未接触 900");
+    expect(el.querySelectorAll('[role="img"] > div').length).toBe(4);
     await act(() => render(null, el));
   });
 });

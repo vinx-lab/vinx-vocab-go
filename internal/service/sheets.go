@@ -268,7 +268,7 @@ func pickSheetWords(ctx context.Context, db *store.DB, loc *time.Location, now t
 		picks = core.SelectFromPool(pool, candidates, core.PoolOptions{Now: now, Count: count, KeepFamiliar: false})
 	case "target":
 		// 目标词按书序；未测 / 要学的词都是要正式测一次的，不按记忆排除已掌握的
-		pool, _, err := targetWordIDs(ctx, db, source.UseClasses, userID, source.BookID, source.Status)
+		pool, _, err := targetWordIDs(ctx, db, loc, now, source.UseClasses, userID, source.BookID, source.Status)
 		if err != nil {
 			return nil, err
 		}

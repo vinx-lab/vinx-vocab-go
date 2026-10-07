@@ -157,16 +157,17 @@ export function Legend({ color, label }: { color: string; label: string }) {
   );
 }
 
-/** 记忆分布：单色由浅到深的分段条（学习中 → 巩固中 → 已掌握），带直接标注 */
-export const MASTERY_RAMP = { learning: "var(--mastery-1)", consolidating: "var(--mastery-2)", mastered: "var(--mastery-3)" } as const;
+/** 记忆分布：没记住（强调色）+ 单色由浅到深的分段条（刚记住 → 巩固中 → 已掌握），带直接标注（spec 0009） */
+export const MASTERY_RAMP = { missed: "var(--accent)", learning: "var(--mastery-1)", consolidating: "var(--mastery-2)", mastered: "var(--mastery-3)" } as const;
 
-export function MasteryBar({ mastery }: { mastery: { learning: number; consolidating: number; mastered: number } }) {
-  const total = mastery.learning + mastery.consolidating + mastery.mastered;
+export function MasteryBar({ mastery }: { mastery: { missed?: number; learning: number; consolidating: number; mastered: number } }) {
   const parts = [
-    { key: "learning", label: "学习中", value: mastery.learning },
+    { key: "missed", label: "没记住", value: mastery.missed ?? 0 },
+    { key: "learning", label: "刚记住", value: mastery.learning },
     { key: "consolidating", label: "巩固中", value: mastery.consolidating },
     { key: "mastered", label: "已掌握", value: mastery.mastered },
   ] as const;
+  const total = parts.reduce((n, p) => n + p.value, 0);
   return (
     <div>
       <div style={{ display: "flex", gap: 2, height: 14, borderRadius: 7, overflow: "hidden", background: "var(--track)" }} role="img" aria-label={parts.map((p) => `${p.label} ${p.value}`).join("，")}>

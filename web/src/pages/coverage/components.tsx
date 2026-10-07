@@ -4,25 +4,28 @@ import { useEffect, useState } from "preact/hooks";
 import { Button, DeleteOutlined, DownOutlined, HolderOutlined, Pagination, Segmented, Select, Tag, UpOutlined } from "@/ui";
 import { keepPreviousData, useQuery } from "@/lib/query";
 import { api } from "@/lib/api";
-import type { Book, CoverageCounts, CoverageData, CoverageStatus, CoverageWord, Paged, TargetBook } from "@/types";
+import type { Book, CoverageCounts, CoverageData, CoverageWord, Paged, TargetBook, WordStage } from "@/types";
 import { EmptyBlock, ErrorBlock, Loading } from "@/components/ui";
 import { Legend } from "@/components/charts";
 import { withUser } from "@/pages/records/shared";
-import { COVERAGE_COLOR, COVERAGE_LABEL, COVERAGE_TAG, moveItem } from "./coverage";
+import { STAGE_COLOR, STAGE_LABEL, STAGE_ORDER, STAGE_TAG, moveItem, stageCount } from "./coverage";
 
-const STATUS_ORDER: CoverageStatus[] = ["known", "learning", "untested"];
+type StageCounts = Pick<CoverageCounts, "untested" | "learning" | "fresh" | "consolidating" | "mastered">;
 
-/** 三段进度条：会了 / 要学 / 未测 */
-export function CoverageBar({ counts, height = 10 }: { counts: Pick<CoverageCounts, "known" | "learning" | "untested">; height?: number }) {
-  const total = counts.known + counts.learning + counts.untested;
+/** 五段进度条：已掌握 / 巩固中 / 刚记住 / 没记住 / 未接触（spec 0009） */
+export function CoverageBar({ counts, height = 10 }: { counts: StageCounts; height?: number }) {
+  const total = STAGE_ORDER.reduce((n, s) => n + stageCount(counts, s), 0);
   return (
     <div
       style={{ display: "flex", gap: 2, height, borderRadius: height / 2, overflow: "hidden", background: "var(--track)" }}
       role="img"
-      aria-label={STATUS_ORDER.map((s) => `${COVERAGE_LABEL[s]} ${counts[s]}`).join("，")}
+      aria-label={STAGE_ORDER.map((s) => `${STAGE_LABEL[s]} ${stageCount(counts, s)}`).join("，")}
     >
       {total > 0 &&
-        STATUS_ORDER.map((s) => (counts[s] > 0 ? <div key={s} title={`${COVERAGE_LABEL[s]} ${counts[s]} 词`} style={{ flex: counts[s], background: COVERAGE_COLOR[s] }} /> : null))}
+        STAGE_ORDER.map((s) => {
+          const n = stageCount(counts, s);
+          return n > 0 ? <div key={s} title={`${STAGE_LABEL[s]} ${n} 词`} style={{ flex: n, background: STAGE_COLOR[s] }} /> : null;
+        })}
     </div>
   );
 }
@@ -30,16 +33,16 @@ export function CoverageBar({ counts, height = 10 }: { counts: Pick<CoverageCoun
 export function CoverageLegend() {
   return (
     <div style={{ display: "flex", gap: 16, fontSize: 12, color: "var(--ink-soft)", flexWrap: "wrap" }}>
-      {STATUS_ORDER.map((s) => (
-        <Legend key={s} color={COVERAGE_COLOR[s]} label={COVERAGE_LABEL[s]} />
+      {STAGE_ORDER.map((s) => (
+        <Legend key={s} color={STAGE_COLOR[s]} label={STAGE_LABEL[s]} />
       ))}
     </div>
   );
 }
 
-/** 「会了 x · 要学 y · 未测 z」 */
-export function coverageLine(c: Pick<CoverageCounts, "known" | "learning" | "untested">): string {
-  return STATUS_ORDER.map((s) => `${COVERAGE_LABEL[s]} ${c[s]}`).join(" · ");
+/** 「已掌握 a · 巩固中 b · 刚记住 c · 没记住 d · 未接触 e」 */
+export function coverageLine(c: StageCounts): string {
+  return STAGE_ORDER.map((s) => `${STAGE_LABEL[s]} ${stageCount(c, s)}`).join(" · ");
 }
 
 /**
@@ -145,7 +148,7 @@ export function TargetBooksEditor({
 
 const WORDS_PAGE = 20;
 
-/** 记录页「目标词书」区块：每本书一行三段进度条，点开按状态看词表。学生本人与老师查看学生共用 */
+/** 记录页「目标词书」区块：每本书一行五段进度条，点开按状态看词表。学生本人与老师查看学生共用 */
 export function CoverageSection({ userId }: { userId?: string }) {
   const q = useQuery({
     queryKey: ["records", userId ?? "me", "coverage"],
@@ -165,7 +168,7 @@ export function CoverageSection({ userId }: { userId?: string }) {
           目标词书
         </h3>
         <span style={{ fontSize: 13, color: "var(--ink-soft)" }}>
-          已测 <b className="vx-num">{c.total.tested}</b> / {c.total.target} · {coverageLine(c.total)}
+          已接触 <b className="vx-num">{c.total.tested}</b> / {c.total.target} · {coverageLine(c.total)}
         </span>
       </div>
       <div style={{ display: "flex", flexDirection: "column" }}>
@@ -199,24 +202,25 @@ export function CoverageSection({ userId }: { userId?: string }) {
 }
 
 function CoverageWords({ userId, bookId, counts }: { userId?: string; bookId: string; counts: CoverageCounts }) {
-  const [status, setStatus] = useState<CoverageStatus>(counts.learning > 0 ? "learning" : counts.untested > 0 ? "untested" : "known");
+  const firstNonEmpty = (["missed", "untested", "fresh", "consolidating", "mastered"] as WordStage[]).find((s) => stageCount(counts, s) > 0) ?? "missed";
+  const [stage, setStage] = useState<WordStage>(firstNonEmpty);
   const [page, setPage] = useState(1);
   const words = useQuery({
-    queryKey: ["records", userId ?? "me", "coverage", "words", bookId, status, page],
-    queryFn: () => api.get<Paged<CoverageWord>>(withUser(`/records/coverage/words?bookId=${encodeURIComponent(bookId)}&status=${status}&page=${page}&limit=${WORDS_PAGE}`, userId)),
+    queryKey: ["records", userId ?? "me", "coverage", "words", bookId, stage, page],
+    queryFn: () => api.get<Paged<CoverageWord>>(withUser(`/records/coverage/words?bookId=${encodeURIComponent(bookId)}&status=${stage}&page=${page}&limit=${WORDS_PAGE}`, userId)),
     placeholderData: keepPreviousData,
   });
 
   return (
     <div style={{ padding: "4px 4px 14px" }}>
-      <Segmented<CoverageStatus>
+      <Segmented<WordStage>
         size="small"
-        value={status}
+        value={stage}
         onChange={(v) => {
-          setStatus(v);
+          setStage(v);
           setPage(1);
         }}
-        options={(["learning", "untested", "known"] as CoverageStatus[]).map((s) => ({ label: `${COVERAGE_LABEL[s]} ${counts[s]}`, value: s }))}
+        options={(["missed", "untested", "fresh", "consolidating", "mastered"] as WordStage[]).map((s) => ({ label: `${STAGE_LABEL[s]} ${stageCount(counts, s)}`, value: s }))}
       />
       <div style={{ marginTop: 8 }}>
         {words.isLoading ? (
@@ -224,7 +228,7 @@ function CoverageWords({ userId, bookId, counts }: { userId?: string; bookId: st
         ) : words.error || !words.data ? (
           <ErrorBlock error={words.error} onRetry={() => words.refetch()} />
         ) : words.data.items.length === 0 ? (
-          <EmptyBlock title={`没有${COVERAGE_LABEL[status]}的词`} />
+          <EmptyBlock title={`没有${STAGE_LABEL[stage]}的词`} />
         ) : (
           <>
             {words.data.items.map((w) => (
@@ -235,8 +239,9 @@ function CoverageWords({ userId, bookId, counts }: { userId?: string; bookId: st
                 <span className="vx-cn" style={{ flex: 1, minWidth: 0, fontSize: 13, color: "var(--ink-soft)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {w.partOfSpeech} {w.definition}
                 </span>
-                <Tag color={COVERAGE_TAG[w.status]} bordered={false}>
-                  {COVERAGE_LABEL[w.status]}
+                <ReviewFlag due={w.due} forgetting={w.forgetting} />
+                <Tag color={STAGE_TAG[w.stage]} bordered={false}>
+                  {STAGE_LABEL[w.stage]}
                 </Tag>
               </div>
             ))}
@@ -250,4 +255,21 @@ function CoverageWords({ userId, bookId, counts }: { userId?: string; bookId: st
       </div>
     </div>
   );
+}
+
+/** 「待复查」「可能忘了」标记（spec 0009）：到期不降档，只提示该复习了 */
+export function ReviewFlag({ due, forgetting }: { due: boolean; forgetting: boolean }) {
+  if (forgetting)
+    return (
+      <Tag color="red" bordered={false}>
+        可能忘了
+      </Tag>
+    );
+  if (due)
+    return (
+      <Tag color="gold" bordered={false}>
+        待复查
+      </Tag>
+    );
+  return null;
 }

@@ -75,7 +75,7 @@ test.describe("深色主题", () => {
     await learnOneGroup(page.request);
     await page.addInitScript(() => { window.print = () => {}; });
     await page.goto("/sheets/new");
-    await expect(page.getByText("还在学").first()).toBeVisible();
+    await expect(page.getByText("刚记住").first()).toBeVisible();
     await page.getByRole("button", { name: /生成并打印/ }).click();
     await page.waitForURL(/\/sheets\/[^/]+\/print/);
     const sheet = page.locator(".vx-sheet-page").first();

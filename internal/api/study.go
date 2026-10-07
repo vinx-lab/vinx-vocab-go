@@ -539,7 +539,7 @@ func registerStudy(r *Router, d *Deps) {
 		if err != nil {
 			return err
 		}
-		out, err := service.UserWordHistory(req.Context(), d.DB, userID, req.PathValue("wordId"))
+		out, err := service.UserWordHistory(req.Context(), d.DB, d.Cfg.Location, d.Now(), userID, req.PathValue("wordId"))
 		if err != nil {
 			return err
 		}

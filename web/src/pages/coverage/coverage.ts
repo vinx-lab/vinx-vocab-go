@@ -1,15 +1,34 @@
 /** 目标词书与覆盖进度（spec 0003）的前端纯函数 */
-import type { CoverageStatus, TargetSheetStatus } from "@/types";
+import type { CoverageCounts, CoverageStatus, TargetSheetStatus, WordStage } from "@/types";
 
-export const COVERAGE_LABEL: Record<CoverageStatus, string> = { known: "会了", learning: "要学", untested: "未测" };
+/** 三档（单词单来源等仍按三档）：记住了 / 没记住 / 未接触 */
+export const COVERAGE_LABEL: Record<CoverageStatus, string> = { known: "记住了", learning: "没记住", untested: "未接触" };
 
-/** 三段进度条的颜色：会了（好）/ 要学（强调）/ 未测（浅色） */
-export const COVERAGE_COLOR: Record<CoverageStatus, string> = { known: "var(--good)", learning: "var(--accent)", untested: "var(--line-strong)" };
+/** 五级词状态（spec 0009） */
+export const STAGE_LABEL: Record<WordStage, string> = { untested: "未接触", missed: "没记住", fresh: "刚记住", consolidating: "巩固中", mastered: "已掌握" };
+
+/** 进度条与图例的顺序：从牢到不牢，最后是未接触 */
+export const STAGE_ORDER: WordStage[] = ["mastered", "consolidating", "fresh", "missed", "untested"];
+
+/** 进度条颜色：记住的三档用记忆分布同一组由深到浅的颜色，没记住用强调色，未接触浅色 */
+export const STAGE_COLOR: Record<WordStage, string> = {
+  mastered: "var(--mastery-3)",
+  consolidating: "var(--mastery-2)",
+  fresh: "var(--mastery-1)",
+  missed: "var(--accent)",
+  untested: "var(--line-strong)",
+};
 
 /** 词表里状态的标签颜色 */
-export const COVERAGE_TAG: Record<CoverageStatus, string> = { known: "green", learning: "orange", untested: "default" };
+export const STAGE_TAG: Record<WordStage, string> = { mastered: "green", consolidating: "cyan", fresh: "blue", missed: "orange", untested: "default" };
 
-/** 已测 / 应测；没有目标词（或没有目标）时为 null */
+/** 某一级的词数（没记住即计数里的 learning） */
+export function stageCount(c: Pick<CoverageCounts, "untested" | "learning" | "fresh" | "consolidating" | "mastered">, s: WordStage): number {
+  if (s === "missed") return c.learning;
+  return c[s];
+}
+
+/** 已接触 / 应测；没有目标词（或没有目标）时为 null */
 export function testedRate(c: { target: number; tested: number } | null | undefined): number | null {
   if (!c || c.target <= 0) return null;
   return c.tested / c.target;

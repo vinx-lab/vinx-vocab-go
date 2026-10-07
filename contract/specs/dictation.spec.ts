@@ -273,7 +273,7 @@ describe.runIf(goOnly)("默写单：出题、明细、批改、权限", () => {
   });
 });
 
-/** 学生本人自批计入班级概览的目标覆盖（spec 0006 §5），老师复核后自批比例下降 */
+/** 学生本人自批计入班级概览的目标覆盖（spec 0006 §5）；同一学习日老师再出一份复核不计（spec 0009 同日只认第一次作答），隔天复核后比例下降由 Go 单测覆盖 */
 describe.runIf(goOnly)("默写单：班级概览的自批比例", () => {
   let teacher: Account, student: Account;
   let classId = "";
@@ -308,14 +308,14 @@ describe.runIf(goOnly)("默写单：班级概览的自批比例", () => {
     expect(g.status, g.text).toBe(200);
   }
 
-  it("自批的词数与比例：学生自批后 100%，老师复核一个词后 50%", async () => {
+  it("自批的词数与比例：学生自批后 100%，老师当天复核不改变", async () => {
     expect(await coverageOf()).toEqual({ target: 2, tested: 0, learning: 0, selfGraded: 0, selfGradedRatio: null });
     await dictate(student.client, undefined, sp, (s) => s === sp[0]);
     expect(await coverageOf()).toEqual({ target: 2, tested: 2, learning: 1, selfGraded: 2, selfGradedRatio: 1 });
-    // 覆盖进度里答错的词变成「要学」
+    // 覆盖进度里答错的词变成「没记住」
     const words = await student.client.get("/records/coverage/words?status=learning");
     expect(words.body.data.items.map((w: { wordId: string }) => w.wordId)).toEqual([book.wordId(sp[1])]);
     await dictate(teacher.client, student.id, [sp[0]], () => true);
-    expect(await coverageOf()).toEqual({ target: 2, tested: 2, learning: 1, selfGraded: 1, selfGradedRatio: 0.5 });
+    expect(await coverageOf()).toEqual({ target: 2, tested: 2, learning: 1, selfGraded: 2, selfGradedRatio: 1 });
   });
 });

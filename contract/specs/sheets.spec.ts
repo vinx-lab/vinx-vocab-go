@@ -318,7 +318,7 @@ describe.runIf(ready("study", "plans", "books", "classes", "users", "sheets"))("
     expectShape("today-with-sheet", today.body);
   });
 
-  it("交卷：K19 挡住同日重复更新记忆；成绩、错词与列表状态正确", async () => {
+  it("交卷：K19 挡住同日重复更新记忆，没学过的词答对建卡（spec 0009）；成绩、错词与列表状态正确", async () => {
     // 6 个词：5 已学 + 1 没学过；第一个词故意认义答错
     const wrongId = learnedIds[0];
     const { correct, total } = await answerSheetTest(student, sheetASession, (id) => id === wrongId);
@@ -330,14 +330,14 @@ describe.runIf(ready("study", "plans", "books", "classes", "users", "sheets"))("
     const done = await student.post(`/study/sessions/${sheetASession}/complete`);
     expect(done.status).toBe(200);
     expect(done.body.data.result).toMatchObject({ words: 6, settled: 6, unsettled: 0, correctFirst: 11, totalFirst: 12 });
-    // 同一学习日内这些词已经在 learn 组更新过记忆：K19 挡住单词单测试再次更新
-    expect(done.body.data.result.ratings).toEqual({});
+    // 同一学习日内 5 个已学词已经在 learn 组更新过记忆：K19 挡住单词单测试再次更新；没学过的那个答对 → 建卡
+    expect(done.body.data.result.ratings).toEqual({ good: 1 });
     expect(done.body.data.result.wrongWordIds).toEqual([wrongId]);
     expectShape("sheets-complete", done.body);
 
-    // 没学过的词不建卡（K10）
+    // 没学过的词答对：建卡，不占每日计划的新词额度（spec 0009，取代 K10 的「只记成绩」）
     const hist = await student.get(`/records/words/${unlearnedId}`);
-    expect(hist.body.data.memory).toBeNull();
+    expect(hist.body.data.memory).toMatchObject({ introducedPlanId: null, reps: 1, lapses: 0 });
 
     const item = (await student.get(`/sheets?limit=100`)).body.data.items.find((i: { id: string }) => i.id === sheetA);
     expect(item).toMatchObject({ status: "tested", activeSessionId: null, firstResult: { sessionId: sheetASession, correct: 11, total: 12 } });

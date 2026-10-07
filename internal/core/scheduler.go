@@ -97,15 +97,11 @@ type FirstAttempt struct {
 
 // DeriveRating 自动评分：
 //   - learn（当天刚看过答案，弱证据）：全对 → Hard；有错 → Again
-//   - review：全对且无提示 → Good；部分对或用了提示 → Hard；全错 → Again
-//   - test / sheet：全对 → Good；否则 → Again（只作用于已学词，由调用方保证）
-//   - drill：不更新记忆 → 0
+//   - review、drill（spec 0009：错词强化按复习的规则）：全对且无提示 → Good；部分对或用了提示 → Hard；全错 → Again
+//   - test / sheet：全对 → Good；否则 → Again
 //
 // 没有任何首次作答（未练完）→ 0（不结算）。返回 0 表示 null。
 func DeriveRating(kind string, attempts []FirstAttempt, requiredModes []string) Rating {
-	if kind == "drill" {
-		return 0
-	}
 	byMode := map[string]FirstAttempt{}
 	for _, a := range attempts {
 		byMode[a.Mode] = a // 与 new Map(entries) 一样后者覆盖前者
@@ -143,7 +139,7 @@ func DeriveRating(kind string, attempts []FirstAttempt, requiredModes []string) 
 			return RatingGood
 		}
 		return RatingAgain
-	case "review":
+	case "review", "drill":
 		if correct == 0 {
 			return RatingAgain
 		}
@@ -166,5 +162,5 @@ func MasteryLevel(stability float64) string {
 	return "learning"
 }
 
-// MasteryLabel 分层中文名（旧 MASTERY_LABEL）。
-var MasteryLabel = map[string]string{"learning": "学习中", "consolidating": "巩固中", "mastered": "已掌握"}
+// MasteryLabel 分层中文名（spec 0009：learning 显示为「刚记住」，另有最近一次答错的「没记住」）。
+var MasteryLabel = map[string]string{"missed": "没记住", "learning": "刚记住", "consolidating": "巩固中", "mastered": "已掌握"}

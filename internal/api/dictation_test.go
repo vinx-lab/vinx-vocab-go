@@ -278,14 +278,14 @@ func TestDictationCreateGradeFlow(t *testing.T) {
 	if itemType != "frame" || correct {
 		t.Fatalf("sx1 = %s %v", itemType, correct)
 	}
-	// K10：学过的错 → Again；没学过的只记成绩
+	// 学过的错 → Again；没学过但答对 → 建卡，不占每日计划的新词额度（spec 0009）
 	var rating int
 	if err := c.d.DB.QueryRow(`SELECT "rating" FROM "ReviewLog" WHERE "sessionId" = ? AND "wordId" = 'w4'`, sessionID).Scan(&rating); err != nil || rating != 1 {
 		t.Fatalf("w4 rating = %d %v", rating, err)
 	}
-	c.d.DB.QueryRow(`SELECT count(*) FROM "MemoryState" WHERE "userId" = ? AND "wordId" = 'w5'`, c.s1ID).Scan(&n)
-	if n != 0 {
-		t.Fatal("w5 should not get memory")
+	c.d.DB.QueryRow(`SELECT count(*) FROM "MemoryState" WHERE "userId" = ? AND "wordId" = 'w5' AND "introducedPlanId" IS NULL`, c.s1ID).Scan(&n)
+	if n != 1 {
+		t.Fatal("w5 答对应建卡")
 	}
 	var snapText, status string
 	c.d.DB.QueryRow(`SELECT "snapshot","status" FROM "StudySession" WHERE "id" = ?`, sessionID).Scan(&snapText, &status)
@@ -397,7 +397,8 @@ func TestDictationSelfGradedCoverage(t *testing.T) {
 		t.Fatalf("自批后 = %v", cov)
 	}
 
-	// 老师复核 w4：w4 最近一次改为老师批改
+	// 老师第二天复核 w4：w4 最近一次改为老师批改（同一天的第二次作答不算，spec 0009）
+	c.now = c.now.Add(24 * time.Hour)
 	tSheet := createDictation(t, c, c.t1, map[string]any{"userId": c.s1ID, "items": []any{map[string]any{"type": "word", "wordId": "w4"}}})
 	okData(t, c.do("POST", "/api/sheets/"+tSheet+"/grade", `{"results":[{"index":0,"correct":true}]}`, c.t1))
 	if cov := coverageOf(c.s1ID); cov["tested"] != float64(2) || cov["selfGraded"] != float64(1) || cov["selfGradedRatio"] != 0.5 {

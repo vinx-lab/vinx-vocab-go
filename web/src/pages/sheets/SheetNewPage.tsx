@@ -65,7 +65,7 @@ const ALL_TARGETS = "__all__";
 
 const TEXT_KIND_LABEL: Record<string, string> = { list: "句型", text: "课文" };
 const SENTENCE_STATUS: Record<DictSentenceCandidate["status"], { label: string; color?: string }> = {
-  learning: { label: "要学", color: "red" },
+  learning: { label: "没记住", color: "red" },
   untested: { label: "未测", color: "blue" },
   known: { label: "会了", color: "green" },
 };
@@ -75,7 +75,7 @@ const sentKey = (id: string) => `s:${id}`;
 
 /**
  * 生成单词单：选格式（自测表 / 默写单）→ 选来源 → 系统预选（从难到易）→ 勾掉/加词 → 份数与每份题数 → 生成并合并打印。
- * 默写单（spec 0006）另有句子来源（单元的篇、要学的句子、AI 短文），单词、短语、句子各自设每份上限。
+ * 默写单（spec 0006）另有句子来源（单元的篇、没记住的句子、AI 短文），单词、短语、句子各自设每份上限。
  */
 export function SheetNewPage() {
   const [params] = useSearchParams();
@@ -319,7 +319,7 @@ export function SheetNewPage() {
   const lead = dict
     ? from
       ? "那次批改里写错的词和句子都在下面，可以取消勾选，也可以搜索加词。"
-      : `${wordsWanted ? SOURCE_HINT[sourceKind] : ""}再选句子来源；要学的句子排在前面，其次是没测过的。打印后看中文写英文，写完由家长或老师批改。`
+      : `${wordsWanted ? SOURCE_HINT[sourceKind] : ""}再选句子来源；没记住的句子排在前面，其次是没测过的。打印后看中文写英文，写完由家长或老师批改。`
     : `${SOURCE_HINT[sourceKind]}不想要的取消勾选，也可以搜索加词；排在前面的词更难，分到第 1 份。`;
 
   const textList = unitTexts.data?.texts ?? [];
@@ -374,8 +374,8 @@ export function SheetNewPage() {
                   { label: "某个单元", value: "unit" },
                   ...(showTargets
                     ? [
-                        { label: "目标：未测的词", value: "targetUntested" as SourceKind },
-                        { label: "目标：要学的词", value: "targetLearning" as SourceKind },
+                        { label: "目标：未接触的词", value: "targetUntested" as SourceKind },
+                        { label: "目标：没记住的词", value: "targetLearning" as SourceKind },
                       ]
                     : []),
                 ]}
@@ -471,7 +471,7 @@ export function SheetNewPage() {
                 options={(sBook.data?.units ?? []).map((u) => ({ value: u.id, label: u.name }))}
               />
               <Checkbox checked={learningOn} disabled={learningCount === 0} onChange={(e) => setLearningOn(e.target.checked)}>
-                要学的句子（{learningCount}）
+                没记住的句子（{learningCount}）
               </Checkbox>
               {isSelf && (
                 <Select
@@ -602,7 +602,7 @@ export function SheetNewPage() {
                 dataSource={sentRows}
                 pagination={false}
                 rowSelection={{ selectedRowKeys: sentSelected, onChange: (keys) => setSentSelected(keys as string[]) }}
-                locale={{ emptyText: sentenceSources.length ? "这些来源里没有句子" : "选一个单元的句型或课文、要学的句子或 AI 短文，就会列出句子" }}
+                locale={{ emptyText: sentenceSources.length ? "这些来源里没有句子" : "选一个单元的句型或课文、没记住的句子或 AI 短文，就会列出句子" }}
                 columns={[
                   { title: "题型", key: "type", width: 70, render: (_: unknown, r: DictSentenceCandidate) => <Tag bordered={false}>{DICT_TYPE_LABEL[r.type]}</Tag> },
                   { title: "卷面提示", dataIndex: "prompt", render: (v: string) => <span className="vx-cn">{v}</span> },

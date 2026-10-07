@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/vinx-lab/vinx-vocab-go/internal/core"
 	"github.com/vinx-lab/vinx-vocab-go/internal/httpx"
@@ -280,13 +281,16 @@ func (v *TargetBooksView) IncludesOwn() bool {
 // 覆盖计算
 // ------------------------------------------------------------------
 
-// userCoverage 一个用户的目标与每个目标词的状态。
+// userCoverage 一个用户的目标与每个目标词的状态（spec 0009 五级状态）。
 type userCoverage struct {
 	targets *TargetBooksView
 	books   []core.CoverageBook
-	status  map[string]core.CoverageStatus
-	// selfGraded 最近一次正式测试是自批默写单的词（spec 0006）。
-	selfGraded map[string]bool
+	stages  map[string]core.WordStageInfo
+}
+
+// status 一个目标词的三档覆盖状态（接口兼容）。
+func (c *userCoverage) status(wordID string) core.CoverageStatus {
+	return core.CoverageStatusOf(c.stages[wordID].Stage)
 }
 
 // bookWords 词书的词（按单元顺序、单元内顺序；不去重，由 core 去重）。
@@ -312,23 +316,23 @@ func bookWords(ctx context.Context, q store.Querier, bookIDs []string) (map[stri
 }
 
 // coverageBatch 一批用户的覆盖状态（班级概览一次算全班）。
-func coverageBatch(ctx context.Context, q store.Querier, useClasses bool, userIDs []string) (map[string]*userCoverage, error) {
+func coverageBatch(ctx context.Context, q store.Querier, loc *time.Location, now time.Time, useClasses bool, userIDs []string) (map[string]*userCoverage, error) {
 	targets, err := effectiveTargetsBatch(ctx, q, useClasses, userIDs)
 	if err != nil {
 		return nil, err
 	}
-	return coverageBatchFor(ctx, q, targets, userIDs)
+	return coverageBatchFor(ctx, q, loc, now, targets, userIDs)
 }
 
 // coverageBatchFor 按给定的目标（每个用户一份）算覆盖状态；班级概览按班级口径时所有人用同一份班级目标（spec 0008）。
-func coverageBatchFor(ctx context.Context, q store.Querier, targets map[string]*TargetBooksView, userIDs []string) (map[string]*userCoverage, error) {
+func coverageBatchFor(ctx context.Context, q store.Querier, loc *time.Location, now time.Time, targets map[string]*TargetBooksView, userIDs []string) (map[string]*userCoverage, error) {
 	out := map[string]*userCoverage{}
 	bookSet := map[string]bool{}
 	bookIDs := []string{}
 	active := []string{} // 有目标的用户
 	for _, id := range userIDs {
 		t := targets[id]
-		out[id] = &userCoverage{targets: t, books: []core.CoverageBook{}, status: map[string]core.CoverageStatus{}, selfGraded: map[string]bool{}}
+		out[id] = &userCoverage{targets: t, books: []core.CoverageBook{}, stages: map[string]core.WordStageInfo{}}
 		if len(t.Books) > 0 {
 			active = append(active, id)
 		}
@@ -360,125 +364,20 @@ func coverageBatchFor(ctx context.Context, q store.Querier, targets map[string]*
 		targetWords[id] = set
 	}
 
-	ph, args := store.Placeholders(len(active)), store.Args(active)
-	// 已交卷的检测类组（判定重测）
-	// 默写单的批改组另取快照（判定自批，spec 0006）
-	srows, err := q.QueryContext(ctx, `SELECT s."id",s."userId",s."kind",s."planId",s."sheetId",s."completedAt",
-			CASE WHEN w."format" = 'dictation' THEN s."snapshot" END
-		FROM "StudySession" s LEFT JOIN "WordSheet" w ON w."id" = s."sheetId"
-		WHERE s."userId" IN (`+ph+`) AND s."kind" IN ('test','sheet') AND s."status" = 'completed' ORDER BY s."completedAt", s.rowid`, args...)
+	evidence, err := loadEvidence(ctx, q, active)
 	if err != nil {
 		return nil, err
 	}
-	type sessInfo struct {
-		kind       string
-		at         store.NullTime
-		selfGraded bool
-	}
-	sessions := map[string]sessInfo{}
-	refs := []core.TestSessionRef{}
-	for srows.Next() {
-		var id, uid, kind string
-		var planID, sheetID, dictSnapshot *string
-		var at store.NullTime
-		if err := srows.Scan(&id, &uid, &kind, &planID, &sheetID, &at, &dictSnapshot); err != nil {
-			srows.Close()
-			return nil, err
-		}
-		key := planID
-		if kind == "sheet" {
-			key = sheetID
-		}
-		self := false
-		if dictSnapshot != nil {
-			sg, err := snapshotSelfGraded(*dictSnapshot)
-			if err != nil {
-				srows.Close()
-				return nil, err
-			}
-			self = sg != nil && *sg
-		}
-		sessions[id] = sessInfo{kind: kind, at: at, selfGraded: self}
-		refs = append(refs, core.TestSessionRef{ID: id, Kind: kind, GroupKey: key, CompletedAt: at.Time})
-	}
-	srows.Close()
-	if err := srows.Err(); err != nil {
-		return nil, err
-	}
-	formal := core.FormalTestSessions(refs)
-
-	answers := map[string]map[string][]core.CoverageAnswer{} // userId → wordId → 作答
-	arows, err := q.QueryContext(ctx, `SELECT a."userId", a."wordId", a."sessionId", a."phase", a."attempt", a."correct"
-		FROM "Answer" a JOIN "StudySession" s ON s."id" = a."sessionId"
-		WHERE a."userId" IN (`+ph+`) AND s."kind" IN ('test','sheet') AND s."status" = 'completed' AND a."phase" = 'test' AND a."attempt" = 1
-		ORDER BY s."completedAt", s.rowid, a.rowid`, args...)
+	memory, err := loadStageMemories(ctx, q, active)
 	if err != nil {
 		return nil, err
 	}
-	for arows.Next() {
-		var uid, wid, sid, phase string
-		var attempt int
-		var correct bool
-		if err := arows.Scan(&uid, &wid, &sid, &phase, &attempt, &correct); err != nil {
-			arows.Close()
-			return nil, err
-		}
-		if !targetWords[uid][wid] {
-			continue
-		}
-		info := sessions[sid]
-		if answers[uid] == nil {
-			answers[uid] = map[string][]core.CoverageAnswer{}
-		}
-		answers[uid][wid] = append(answers[uid][wid], core.CoverageAnswer{
-			SessionID: sid, Kind: info.kind, Phase: phase, Attempt: attempt, Correct: correct, Retake: !formal[sid], At: info.at.Time,
-			SelfGraded: info.selfGraded,
-		})
-	}
-	arows.Close()
-	if err := arows.Err(); err != nil {
-		return nil, err
-	}
-
-	memory := map[string]map[string]*core.CoverageMemory{}
-	mrows, err := q.QueryContext(ctx, `SELECT "userId","wordId","stability","lastReview" FROM "MemoryState" WHERE "userId" IN (`+ph+`)`, args...)
-	if err != nil {
-		return nil, err
-	}
-	for mrows.Next() {
-		var uid, wid string
-		var st float64
-		var last store.NullTime
-		if err := mrows.Scan(&uid, &wid, &st, &last); err != nil {
-			mrows.Close()
-			return nil, err
-		}
-		if !targetWords[uid][wid] {
-			continue
-		}
-		m := &core.CoverageMemory{Stability: st}
-		if last.Valid {
-			t := last.Time
-			m.LastReview = &t
-		}
-		if memory[uid] == nil {
-			memory[uid] = map[string]*core.CoverageMemory{}
-		}
-		memory[uid][wid] = m
-	}
-	mrows.Close()
-	if err := mrows.Err(); err != nil {
-		return nil, err
-	}
-
+	now = msTime(now)
+	_, _, dayEnd := TodayRange(loc, now)
 	for _, id := range active {
 		c := out[id]
 		for w := range targetWords[id] {
-			st, self := core.WordCoverageDetail(answers[id][w], memory[id][w])
-			c.status[w] = st
-			if self {
-				c.selfGraded[w] = true
-			}
+			c.stages[w] = core.WordStage(evidence[id][w], memory[id][w], now, dayEnd)
 		}
 	}
 	return out, nil
@@ -492,13 +391,13 @@ type CoverageView struct {
 }
 
 // UserCoverage 覆盖进度（没有目标时 books 为空、数字全 0）。
-func UserCoverage(ctx context.Context, q store.Querier, useClasses bool, userID string) (*CoverageView, error) {
-	m, err := coverageBatch(ctx, q, useClasses, []string{userID})
+func UserCoverage(ctx context.Context, q store.Querier, loc *time.Location, now time.Time, useClasses bool, userID string) (*CoverageView, error) {
+	m, err := coverageBatch(ctx, q, loc, now, useClasses, []string{userID})
 	if err != nil {
 		return nil, err
 	}
 	c := m[userID]
-	total, per := core.SummarizeCoverage(c.status, c.books)
+	total, per := core.SummarizeCoverage(c.stages, c.books)
 	return &CoverageView{Source: c.targets.Source, Total: total, Books: per}, nil
 }
 
@@ -523,7 +422,7 @@ const (
 
 // classCoverage 班级概览的目标覆盖：mode 为 class 时每个学生都按 classID 的目标算，
 // 否则按各自的有效目标；没有目标为 nil。includesOwn 是有效目标里含自选书的学生。
-func classCoverage(ctx context.Context, q store.Querier, classID, mode string, userIDs []string) (map[string]*ClassStudentCoverage, map[string]bool, error) {
+func classCoverage(ctx context.Context, q store.Querier, loc *time.Location, now time.Time, classID, mode string, userIDs []string) (map[string]*ClassStudentCoverage, map[string]bool, error) {
 	var targets map[string]*TargetBooksView
 	includesOwn := map[string]bool{}
 	if mode == CoverageModeClass {
@@ -546,7 +445,7 @@ func classCoverage(ctx context.Context, q store.Querier, classID, mode string, u
 			}
 		}
 	}
-	m, err := coverageBatchFor(ctx, q, targets, userIDs)
+	m, err := coverageBatchFor(ctx, q, loc, now, targets, userIDs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -555,8 +454,8 @@ func classCoverage(ctx context.Context, q store.Querier, classID, mode string, u
 		if len(c.targets.Books) == 0 {
 			continue
 		}
-		total, _ := core.SummarizeCoverage(c.status, c.books)
-		self := core.CountSelfGraded(c.status, c.selfGraded, c.books)
+		total, _ := core.SummarizeCoverage(c.stages, c.books)
+		self := core.CountSelfGraded(c.stages, c.books)
 		var ratio *float64
 		if total.Tested > 0 {
 			r := float64(self) / float64(total.Tested)
@@ -568,8 +467,8 @@ func classCoverage(ctx context.Context, q store.Querier, classID, mode string, u
 }
 
 // targetWordIDs 目标词（bookId 非空时只取这本书；须在目标里，否则 404）按顺序列出，status 非空时只取该状态。
-func targetWordIDs(ctx context.Context, q store.Querier, useClasses bool, userID, bookID, status string) ([]string, map[string]core.CoverageStatus, error) {
-	m, err := coverageBatch(ctx, q, useClasses, []string{userID})
+func targetWordIDs(ctx context.Context, q store.Querier, loc *time.Location, now time.Time, useClasses bool, userID, bookID, status string) ([]string, *userCoverage, error) {
+	m, err := coverageBatch(ctx, q, loc, now, useClasses, []string{userID})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -589,11 +488,11 @@ func targetWordIDs(ctx context.Context, q store.Querier, useClasses bool, userID
 	}
 	out := []string{}
 	for _, w := range core.CoverageWordOrder(books) {
-		if status == "" || c.status[w] == status {
+		if status == "" || c.status(w) == status || c.stages[w].Stage == status {
 			out = append(out, w)
 		}
 	}
-	return out, c.status, nil
+	return out, c, nil
 }
 
 // CoverageWordItem GET /records/coverage/words 的一项。
@@ -604,11 +503,15 @@ type CoverageWordItem struct {
 	PartOfSpeech *string `json:"partOfSpeech"`
 	Definition   string  `json:"definition"`
 	Status       string  `json:"status"`
+	// Stage 五级状态；Due 待复查；Forgetting 可能忘了（spec 0009）。
+	Stage      string `json:"stage"`
+	Due        bool   `json:"due"`
+	Forgetting bool   `json:"forgetting"`
 }
 
 // CoverageWords 某本书（bookID 为空时为全部目标词）某种状态（为空不过滤）的词表，按书序、书内顺序分页。
-func CoverageWords(ctx context.Context, q store.Querier, useClasses bool, userID, bookID, status string, page, limit int) (httpx.Paginated[CoverageWordItem], error) {
-	ids, status2, err := targetWordIDs(ctx, q, useClasses, userID, bookID, status)
+func CoverageWords(ctx context.Context, q store.Querier, loc *time.Location, now time.Time, useClasses bool, userID, bookID, status string, page, limit int) (httpx.Paginated[CoverageWordItem], error) {
+	ids, cov, err := targetWordIDs(ctx, q, loc, now, useClasses, userID, bookID, status)
 	if err != nil {
 		return httpx.Paginated[CoverageWordItem]{}, err
 	}
@@ -626,7 +529,9 @@ func CoverageWords(ctx context.Context, q store.Querier, useClasses bool, userID
 		if !ok {
 			continue
 		}
-		items = append(items, CoverageWordItem{WordID: w.ID, Spelling: w.Spelling, Phonetic: w.Phonetic, PartOfSpeech: w.PartOfSpeech, Definition: w.Definition, Status: status2[id]})
+		st := cov.stages[id]
+		items = append(items, CoverageWordItem{WordID: w.ID, Spelling: w.Spelling, Phonetic: w.Phonetic, PartOfSpeech: w.PartOfSpeech, Definition: w.Definition,
+			Status: cov.status(id), Stage: st.Stage, Due: st.Due, Forgetting: st.Forgetting})
 	}
 	return httpx.Page(items, total, page, limit), nil
 }

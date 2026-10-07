@@ -124,11 +124,30 @@ func DailySeries(today string, days int, answers []AnswerFact, introducedDays, r
 	return out
 }
 
-// MasteryDist 记忆分层分布。
+// MasteryDist 记忆分层分布（有记忆的词）：没记住 + 刚记住（learning）+ 巩固中 + 已掌握 = 已学词数（spec 0009）。
 type MasteryDist struct {
+	Missed        int `json:"missed"`
 	Learning      int `json:"learning"`
 	Consolidating int `json:"consolidating"`
 	Mastered      int `json:"mastered"`
+}
+
+// StageDistribution 按词状态汇总分层分布。
+func StageDistribution(stages map[string]WordStageInfo) MasteryDist {
+	var r MasteryDist
+	for _, st := range stages {
+		switch st.Stage {
+		case StageMissed:
+			r.Missed++
+		case StageMastered:
+			r.Mastered++
+		case StageConsolidating:
+			r.Consolidating++
+		default:
+			r.Learning++
+		}
+	}
+	return r
 }
 
 // MasteryDistribution 旧 masteryDistribution()。

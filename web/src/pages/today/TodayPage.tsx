@@ -11,7 +11,7 @@ import { SELF_PLAN_CLOSED_TEXT, useMyTargets } from "@/lib/targets";
 import { EmptyBlock, ErrorBlock, Loading, PageHeader, StatTile } from "@/components/ui";
 import { ProgressRing } from "@/components/charts";
 import type { CoverageData, SessionKind, TodayData, TodayPlanCard } from "@/types";
-import { coverageLine } from "@/pages/coverage/components";
+import { CoverageBar, coverageLine } from "@/pages/coverage/components";
 import { targetSheetLink } from "@/pages/coverage/coverage";
 import { preloadStudyPage } from "@/pages/study/lazy";
 import { MODE_LABEL } from "@/types";
@@ -185,7 +185,7 @@ export function TodayPage() {
               {todaySheetTitle(t.sheet)}
               {t.sheet.remaining > 0 && `（还有 ${t.sheet.remaining} 份待完成）`}
             </div>
-            <div style={{ color: "var(--muted)", fontSize: 13 }}>纸上默写完了吗？对照答案页逐题批改，错的词和句子会进「要学」。</div>
+            <div style={{ color: "var(--muted)", fontSize: 13 }}>纸上默写完了吗？对照答案页逐题批改，错的词和句子会进「没记住」。</div>
           </div>
           <Link to={gradeLink(t.sheet.id)}>
             <Button type="primary">批改</Button>
@@ -207,7 +207,7 @@ export function TodayPage() {
             </div>
             <div style={{ color: "var(--muted)", fontSize: 13 }}>
               成绩 {g.correct}/{g.total}
-              {g.correct < g.total ? "，错的词和句子已经进了「要学」。" : "，全对！"}
+              {g.correct < g.total ? "，错的词和句子已经进了「没记住」。" : "，全对！"}
             </div>
           </div>
           <Link to={gradeLink(g.id)}>
@@ -247,7 +247,7 @@ export function TodayPage() {
   );
 }
 
-/** 目标进度（spec 0003）：已测 / 应测的进度环，会了 · 要学 · 未测，一键出单词单；没有目标时不显示 */
+/** 目标进度（spec 0003 / 0009）：已接触 / 应测的进度环，五级状态，一键出单词单；没有目标时不显示 */
 function TargetProgressCard() {
   const q = useQuery({ queryKey: ["records", "me", "coverage"], queryFn: () => api.get<CoverageData>("/records/coverage"), refetchOnWindowFocus: true });
   const c = q.data;
@@ -256,28 +256,31 @@ function TargetProgressCard() {
   return (
     <div className="vx-card vx-rise" style={{ padding: 18, marginBottom: 14 }} aria-label="目标进度">
       <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-        <ProgressRing value={total.tested} total={total.target} label={`已测 ${total.tested}/${total.target}`} />
+        <ProgressRing value={total.tested} total={total.target} label={`已接触 ${total.tested}/${total.target}`} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
             <Link to="/records" className="vx-title" style={{ fontSize: 18 }}>
               目标进度
             </Link>
             <span style={{ color: "var(--ink-soft)", fontSize: 14 }}>
-              已测 <b className="vx-num">{total.tested}</b> / {total.target}
+              已接触 <b className="vx-num">{total.tested}</b> / {total.target}
             </span>
           </div>
           <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>{coverageLine(total)}</div>
+          <div style={{ marginTop: 8 }}>
+            <CoverageBar counts={total} height={8} />
+          </div>
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginTop: 14 }}>
         <Link to={targetSheetLink("untested")} style={total.untested === 0 ? { pointerEvents: "none" } : undefined}>
           <Button block type="primary" disabled={total.untested === 0}>
-            测未测的词
+            测未接触的词
           </Button>
         </Link>
         <Link to={targetSheetLink("learning")} style={total.learning === 0 ? { pointerEvents: "none" } : undefined}>
           <Button block disabled={total.learning === 0}>
-            练要学的词
+            练没记住的词
           </Button>
         </Link>
       </div>

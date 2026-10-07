@@ -47,6 +47,7 @@
 
 - **放在反向代理后面**：写请求会检查 `Origin` 与请求的 `Host` 是否一致。代理要把原始 Host 传过来（nginx：`proxy_set_header Host $host;`），或者用 `ALLOWED_ORIGINS=https://vocab.example.com` 列出对外地址，否则登录等写请求会得到 403「非法请求来源」。代理做 HTTPS 终止时再设 `COOKIE_SECURE=true`。AI 生成是后台任务，不受代理超时影响。
 - 升级：停服务，替换可执行文件，再启动。有数据库结构变化时，启动时会先把 `vinx.db` 备份为 `vinx.db.bak-<时间>`（保留最近 3 份）再迁移。升级后已打开的页面会自动刷新一次。
+- 从 2026-10 之前的版本升级（spec 0009「每次作答都算数」）：替换可执行文件后、启动服务前，先运行 `vinx-vocab memory backfill --data <数据目录>` 看演练结果，再加 `--apply` 执行。它把按新规则本该更新、当时没有更新的记忆补上（执行前自动备份为 `vinx.db.before-backfill-<时间>`，补写的复习记录带来源标记）；不补也能用，只是旧作答不进记忆排程。
 
 ## 数据目录
 
@@ -95,6 +96,7 @@ vinx-vocab audio prefetch [--data 目录] [--apply] [--limit N] [--delay 毫秒]
                                                                       全量预缓存真人发音（默认只演练，--apply 才实际抓取）
 vinx-vocab import --from-postgres <URL> [--settings-secret <旧密钥>] [--force] [--edition school|personal] [--data 目录]
                                                                       从旧版 PostgreSQL 导入
+vinx-vocab memory backfill [--data 目录] [--apply]                  按新规则补算历史记忆（默认演练；--apply 先备份再写入；先停服务）
 vinx-vocab version                                                   打印版本
 ```
 

@@ -21,6 +21,14 @@ interface Counts {
   untested: number;
 }
 
+
+/** 三档计数（接口兼容）精确相等；五级细分（spec 0009）：刚记住 + 巩固中 + 已掌握 = 记住了 */
+function expectCounts(c: Record<string, number>, want: { target: number; tested: number; known: number; learning: number; untested: number }) {
+  expect(c).toMatchObject(want);
+  expect(c.fresh + c.consolidating + c.mastered).toBe(c.known);
+  expect(c.due).toBeGreaterThanOrEqual(0);
+}
+
 describe.runIf(goOnly)("目标词书与覆盖进度", () => {
   let admin: Client;
   let teacher: Account, other: Account, student: Account, loner: Account;
@@ -115,7 +123,7 @@ describe.runIf(goOnly)("目标词书与覆盖进度", () => {
   it("覆盖进度：初始全部未测；本人与本班老师看到同样的数字；别班老师、其他学生 403", async () => {
     const mine = await coverage(student.client);
     expect(mine.source).toBe("class");
-    expect(mine.total).toEqual({ target: 4, tested: 0, known: 0, learning: 0, untested: 4 });
+    expectCounts(mine.total, { target: 4, tested: 0, known: 0, learning: 0, untested: 4 });
     expect(mine.books).toHaveLength(1);
     expect(mine.books[0]).toMatchObject({ bookId: book.bookId, target: 4, tested: 0, known: 0, learning: 0, untested: 4 });
     expect(await coverage(teacher.client, student.id)).toEqual(mine);
@@ -150,7 +158,7 @@ describe.runIf(goOnly)("目标词书与覆盖进度", () => {
     expect(graded.body.data.grading.selfGraded).toBe(false);
 
     const cov = await coverage(student.client);
-    expect(cov.total).toEqual({ target: 4, tested: 2, known: 1, learning: 1, untested: 2 });
+    expectCounts(cov.total, { target: 4, tested: 2, known: 1, learning: 1, untested: 2 });
     expect(await coverage(teacher.client, student.id)).toEqual(cov);
     expect(await overviewCoverage()).toEqual({ target: 4, tested: 2, learning: 1, selfGraded: 0, selfGradedRatio: 0 });
     expect(await wordsOf(teacher.client, `?userId=${student.id}&status=learning`)).toEqual([`${book.wordId(sp[1])}:learning`]);
@@ -196,7 +204,7 @@ describe.runIf(goOnly)("目标词书与覆盖进度", () => {
     expect((await student.client.post(`/study/sessions/${sessionId}/complete`)).status).toBe(200);
 
     const cov = await coverage(student.client);
-    expect(cov.total).toEqual({ target: 4, tested: 4, known: 2, learning: 2, untested: 0 });
+    expectCounts(cov.total, { target: 4, tested: 4, known: 2, learning: 2, untested: 0 });
     expect(await coverage(teacher.client, student.id)).toEqual(cov);
     // 概览：sp[0]、sp[1] 由老师批改，sp[2]、sp[3] 是学生自己在线测的（不算自批，自批只指默写单的学生批改）
     expect(await overviewCoverage()).toMatchObject({ target: 4, tested: 4, learning: 2 });

@@ -173,14 +173,15 @@ func TestTargetBooksSettingAndSource(t *testing.T) {
 	}
 }
 
-// seedCoverageAnswers 给 s2 造正式测试记录（c1 目标 = b2、b1，目标词 w4 w5 w1 w2 w3）：
+// seedCoverageAnswers 给 s2 造作答记录（c1 目标 = b2、b1，目标词 w4 w5 w1 w2 w3），按 spec 0009 的证据口径：
 //   - T1（计划 P1，10-01）：w1 对、w2 错、w4 认义对 + 拼写错（算错）
-//   - T2（计划 P1，10-02，重测）：w2 对、w4 对 → 不计
-//   - T3 / T4（计划已删除，10-03 / 10-04）：w3 错 → 对，各自算正式
-//   - 进行中的检测 w5 对、新学组 w5 对 → 不计
-//   - w2 的记忆在 10-05 达到已掌握 → 会了
+//   - T2（计划 P1，10-02，同一检测计划的后续组也算）：w2 对、w4 错
+//   - T2b（同一天更晚完成）：w4 对 → 同日第二条，不计
+//   - T3 / T4（计划已删除，10-03 / 10-04）：w3 错 → 对
+//   - 进行中的检测、进行中的新学组里 w5 对 → 不计
+//   - w2 的记忆稳定度 30 天 → 已掌握
 //
-// 结果：w1 w2 w3 会了，w4 要学，w5 未测。
+// 结果：w1 刚记住、w2 已掌握、w3 刚记住（会了），w4 没记住（要学），w5 未接触。
 func seedCoverageAnswers(c *covEnv) {
 	s := c.s2ID
 	c.exec(`INSERT INTO "Plan" ("id","name","creatorId","kind") VALUES ('P1','测一',?,'test')`, s)
@@ -189,8 +190,12 @@ func seedCoverageAnswers(c *covEnv) {
 		if completed != "" {
 			comp = completed
 		}
+		var compDay any
+		if completed != "" {
+			compDay = completed[:10]
+		}
 		c.exec(`INSERT INTO "StudySession" ("id","userId","planId","kind","status","dayKey","snapshot","startedAt","completedAt","completedDay")
-			VALUES (?,?,?,?,?,?,?,?,?,?)`, id, s, plan, kind, status, "2026-10-01", `{"modes":["spelling"],"items":[]}`, "2026-10-01T00:00:00.000Z", comp, nil)
+			VALUES (?,?,?,?,?,?,?,?,?,?)`, id, s, plan, kind, status, "2026-10-01", `{"modes":["spelling"],"items":[]}`, "2026-10-01T00:00:00.000Z", comp, compDay)
 	}
 	n := 0
 	ans := func(session, word, mode, phase string, correct bool, at string) {
@@ -205,14 +210,16 @@ func seedCoverageAnswers(c *covEnv) {
 	ans("T1", "w4", "spelling", "test", false, "2026-10-01T01:00:00.000Z")
 	sess("T2", "P1", "test", "completed", "2026-10-02T02:00:00.000Z")
 	ans("T2", "w2", "spelling", "test", true, "2026-10-02T01:00:00.000Z")
-	ans("T2", "w4", "spelling", "test", true, "2026-10-02T01:00:00.000Z")
+	ans("T2", "w4", "spelling", "test", false, "2026-10-02T01:00:00.000Z")
+	sess("T2b", "P1", "test", "completed", "2026-10-02T05:00:00.000Z")
+	ans("T2b", "w4", "spelling", "test", true, "2026-10-02T04:00:00.000Z")
 	sess("T3", nil, "test", "completed", "2026-10-03T02:00:00.000Z")
 	ans("T3", "w3", "spelling", "test", false, "2026-10-03T01:00:00.000Z")
 	sess("T4", nil, "test", "completed", "2026-10-04T02:00:00.000Z")
 	ans("T4", "w3", "spelling", "test", true, "2026-10-04T01:00:00.000Z")
 	sess("TA", nil, "test", "active", "")
 	ans("TA", "w5", "spelling", "test", true, "2026-10-05T01:00:00.000Z")
-	sess("L1", nil, "learn", "completed", "2026-10-05T02:00:00.000Z")
+	sess("L1", nil, "learn", "active", "")
 	ans("L1", "w5", "spelling", "practice", true, "2026-10-05T01:00:00.000Z")
 	c.exec(`INSERT INTO "MemoryState" ("id","userId","wordId","due","stability","difficulty","lastReview","introducedDay") VALUES ('m1',?,'w2','2026-11-01T00:00:00.000Z',30,5,'2026-10-05T00:00:00.000Z','2026-09-30')`, s)
 }
@@ -271,6 +278,19 @@ func TestCoverageRecordsAndOverview(t *testing.T) {
 		if b1["bookId"] != "b1" || !reflect.DeepEqual(countsOf(b1), map[string]float64{"target": 4, "tested": 4, "known": 3, "learning": 1, "untested": 0}) {
 			t.Fatalf("%s b1 = %v", name, b1)
 		}
+	}
+	// 五级细分（spec 0009）：w1 w3 刚记住、w2 已掌握
+	total := dataOf(c.do("GET", "/api/records/coverage", "", c.s2))["total"].(map[string]any)
+	if total["fresh"] != float64(2) || total["consolidating"] != float64(0) || total["mastered"] != float64(1) || total["due"] != float64(0) {
+		t.Fatalf("细分 = %v", total)
+	}
+	stages := map[string]string{}
+	for _, it := range dataOf(c.do("GET", "/api/records/coverage/words?status=mastered", "", c.s2))["items"].([]any) {
+		m := it.(map[string]any)
+		stages[m["wordId"].(string)] = m["stage"].(string)
+	}
+	if !reflect.DeepEqual(stages, map[string]string{"w2": "mastered"}) {
+		t.Fatalf("按五级筛选 = %v", stages)
 	}
 	// 别班老师 403、其他学生 403
 	if r := c.do("GET", "/api/records/coverage?userId="+c.s2ID, "", c.t2); r.Status != 403 {

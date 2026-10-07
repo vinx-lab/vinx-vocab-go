@@ -52,6 +52,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return audioCmd(args, stdout, stderr)
 	case "import":
 		return importCmd(args, stdout, stderr)
+	case "memory":
+		return memoryCmd(args, stdout, stderr)
 	case "version", "--version", "-v":
 		fmt.Fprintln(stdout, "vinx-vocab", version)
 		return 0
@@ -73,6 +75,7 @@ func usage(w io.Writer) {
                                                                         全量预缓存真人发音（默认演练，--apply 才真的抓）
   vinx-vocab import --from-postgres <URL> [--settings-secret <旧密钥>] [--force] [--edition school|personal] [--data 目录]
                                                                         从旧版 PostgreSQL 导入全部数据（目标库有数据时需 --force，先备份）
+  vinx-vocab memory backfill [--data 目录] [--apply]                   按新规则补算历史记忆（默认演练；--apply 先备份再写入，先停服务）
   vinx-vocab version                                                   打印版本
 
 数据目录默认：Windows 为程序旁的 vinx-data，其他系统为当前目录下的 data。

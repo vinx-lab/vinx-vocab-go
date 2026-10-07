@@ -57,7 +57,7 @@ export function RecordsView({ userId }: { userId?: string }) {
         <SectionTitle title="记忆分布" />
         <MasteryBar mastery={s.mastery} />
         <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
-          按记忆稳定性划分：学习中 &lt; 7 天，巩固中 7–21 天，已掌握 ≥ 21 天（稳定性越长，越不容易忘）。
+          最近一次答错的是「没记住」；其余按记忆稳定性划分：刚记住 &lt; 7 天，巩固中 7–21 天，已掌握 ≥ 21 天（稳定性越长，越不容易忘）。
         </div>
       </div>
 

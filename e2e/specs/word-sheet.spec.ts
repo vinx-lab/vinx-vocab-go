@@ -37,7 +37,7 @@ test.describe("单词单闭环", () => {
     // 生成：不触发真实打印对话框
     await page.addInitScript(() => { window.print = () => {}; });
     await page.goto("/sheets/new");
-    await expect(page.getByText("还在学").first()).toBeVisible();
+    await expect(page.getByText("刚记住").first()).toBeVisible();
     await page.getByRole("button", { name: /生成并打印/ }).click();
     await page.waitForURL(/\/sheets\/[^/]+\/print/);
     await expect(page.getByText(/VinxVocab 单词单 #1/)).toBeVisible();
@@ -78,7 +78,7 @@ test.describe("单词单闭环", () => {
 
     await page.addInitScript(() => { window.print = () => {}; });
     await page.goto("/sheets/new");
-    await expect(page.getByText("还在学").first()).toBeVisible();
+    await expect(page.getByText("刚记住").first()).toBeVisible();
     await page.getByLabel("份数").fill("4");
     await page.getByLabel("份数").blur();
     await expect(page.getByText(/生成 4 份/)).toBeVisible();

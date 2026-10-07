@@ -114,6 +114,12 @@ const GO_ADDED: Record<string, string[]> = {
   // spec 0004 / 0005：短文逐句（句子、学段、检查标记）
   "ai-job-passage-done": ["result.level", "result.sentences"],
   "ai-passage-detail": ["data.sentences"],
+  // spec 0009：记忆分布的「没记住」、单词列表的「可能忘了」、复习记录的来源（补算）；
+  // 单词单测试里没学过、答对的词建卡，ratings 多出 good
+  "records-summary": ["data.mastery.missed"],
+  "records-words": ["data.items[].forgetting"],
+  "records-word-history": ["data.reviewLogs[].source"],
+  "sheets-complete": ["data.result.ratings.good"],
 };
 
 function stripAdded(name: string, value: unknown, paths: string[]): unknown {

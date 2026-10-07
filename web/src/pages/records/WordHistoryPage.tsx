@@ -57,6 +57,11 @@ export function WordHistoryPage() {
           <span style={{ fontWeight: 400, fontSize: 12, color: "var(--muted)", marginLeft: 8 }}>
             {fmtDay(l.dayKey)} {fmtTime(l.reviewedAt)}
           </span>
+          {l.source && (
+            <span title="规则调整后按当时的作答补算的记录（spec 0009）" style={{ fontWeight: 400, fontSize: 12, color: "var(--muted)", marginLeft: 8 }}>
+              补算
+            </span>
+          )}
         </div>
         <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>
           稳定性 → {l.stabilityAfter.toFixed(1)} 天 · 下次复习 {fmtDate(l.dueAfter)}

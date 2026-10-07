@@ -4,13 +4,13 @@ import { apiOk, importBook, letters, newClassWithStudent, newTeacher, wordIds } 
 
 /**
  * 默写单（spec 0006）：出一份包含单词、短语、句子的默写单 → 打印页显示题目页和答案页 → 批改页标两道错题并提交
- * → 今日页状态变成已批改 → 覆盖进度里对应的词变成「要学」。
+ * → 今日页状态变成已批改 → 覆盖进度里对应的词变成「没记住」。
  * 新老师、班级、学生、带句型清单的词书与班级目标词书由 API 准备；出题、打印、批改、查看进度走页面（学生本人账号，自批）。
  */
 test.describe("默写单", () => {
   test.setTimeout(120_000);
 
-  test("出题 → 打印（题目页 + 答案页）→ 批改两道错题 → 今日已批改 → 错的词变成要学", async ({ browser }) => {
+  test("出题 → 打印（题目页 + 答案页）→ 批改两道错题 → 今日已批改 → 错的词变成没记住", async ({ browser }) => {
     const teacher = await newTeacher("默写老师");
     const { classId, student } = await newClassWithStudent(teacher, "默写班", "默写同学");
     const tag = letters();
@@ -47,11 +47,11 @@ test.describe("默写单", () => {
     await login(page, student.email);
     await expect(page).toHaveURL(/\/today/);
 
-    // 出题：默写单 · 词来自「目标：未测的词」· 句子来自单元的句型清单
+    // 出题：默写单 · 词来自「目标：未接触的词」· 句子来自单元的句型清单
     await page.goto("/sheets/new");
     await page.locator('[aria-label="格式"] .ant-segmented-item', { hasText: "默写单" }).click();
     await expect(page.getByText("出默写单").first()).toBeVisible();
-    await page.locator(".ant-segmented-item", { hasText: "目标：未测的词" }).click();
+    await page.locator(".ant-segmented-item", { hasText: "目标：未接触的词" }).click();
     for (const s of [w1, w2, phrase]) await expect(page.getByText(s, { exact: true }).first()).toBeVisible();
     await page.getByRole("combobox", { name: "句子来源词书" }).click();
     await page.getByRole("option", { name: book.name }).click();
@@ -102,14 +102,14 @@ test.describe("默写单", () => {
     // 今日页：已批改（自批）
     await page.goto("/today");
     await expect(page.getByText("默写单 #1 · 已批改")).toBeVisible();
-    await expect(page.getByText("成绩 3/5，错的词和句子已经进了「要学」。")).toBeVisible();
+    await expect(page.getByText("成绩 3/5，错的词和句子已经进了「没记住」。")).toBeVisible();
     await expect(page.getByText("默写单 #1 · 待批改")).toHaveCount(0);
-    await expect(page.getByLabel("目标进度")).toContainText("要学 1");
+    await expect(page.getByLabel("目标进度")).toContainText("没记住 1");
 
-    // 覆盖进度：错的词在「要学」里
+    // 覆盖进度：错的词在「没记住」里
     await page.goto("/records");
     await page.getByRole("button", { name: new RegExp(book.name) }).click();
-    const learningTab = page.locator(".ant-segmented-item", { hasText: "要学 1" });
+    const learningTab = page.locator(".ant-segmented-item", { hasText: "没记住 1" });
     await expect(learningTab).toBeVisible();
     await expect(page.getByText(wrongWord, { exact: true }).first()).toBeVisible();
 

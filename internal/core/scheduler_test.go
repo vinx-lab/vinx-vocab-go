@@ -40,8 +40,10 @@ func TestDeriveRating(t *testing.T) {
 		// test：全对 Good，否则 Again
 		{"test 对", "test", []FirstAttempt{fa("recognition", true)}, []string{"recognition"}, RatingGood},
 		{"test 错", "test", []FirstAttempt{fa("recognition", false)}, []string{"recognition"}, RatingAgain},
-		// drill 不更新记忆；题型没答全不结算
-		{"drill", "drill", []FirstAttempt{fa("recognition", true)}, []string{"recognition"}, 0},
+		// drill 按复习的规则（spec 0009）；题型没答全不结算
+		{"drill 全对", "drill", []FirstAttempt{fa("recognition", true)}, []string{"recognition"}, RatingGood},
+		{"drill 部分对", "drill", []FirstAttempt{fa("recognition", true), fa("spelling", false)}, both, RatingHard},
+		{"drill 全错", "drill", []FirstAttempt{fa("recognition", false), fa("spelling", false)}, both, RatingAgain},
 		{"没答全", "review", []FirstAttempt{fa("recognition", true)}, both, 0},
 		{"无题型", "review", nil, []string{}, 0},
 		// sheet 与 test 同口径

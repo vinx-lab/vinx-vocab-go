@@ -57,7 +57,7 @@ describe("splitDictation（与后端 core.SplitDictation 同口径）", () => {
 });
 
 describe("sentenceSourcesOf（生成页的句子来源 → 接口参数）", () => {
-  it("单元的篇可多选，加上要学的句子和一篇 AI 短文", () => {
+  it("单元的篇可多选，加上没记住的句子和一篇 AI 短文", () => {
     expect(sentenceSourcesOf({ textIds: ["t1", "t2"], learning: true, passageId: "p1" })).toEqual([
       { kind: "text", textId: "t1" },
       { kind: "text", textId: "t2" },

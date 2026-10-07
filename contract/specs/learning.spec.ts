@@ -341,7 +341,8 @@ describe.runIf(ready("study", "plans"))("今日与学习组", () => {
     expect(t.body.data).toMatchObject({ plans: [], streak: 1, learnedWords: 1 });
   });
 
-  it("错词强化：只练近期错词，不更新记忆", async () => {
+  // spec 0009 起错词强化也更新记忆；这里与新学同一学习日，K19 挡住同日再次更新
+  it("错词强化：只练近期错词，同一学习日不再更新记忆（K19）", async () => {
     const before = await student.get("/records/words?limit=100");
     const s = await student.post("/study/sessions", { kind: "drill", planId: "ignored" });
     expect(s.status).toBe(200);
@@ -359,7 +360,7 @@ describe.runIf(ready("study", "plans"))("今日与学习组", () => {
   it("记录：概况、每日、学习组列表与详情、单词列表与历史（含筛选、分页、校验）", async () => {
     const summary = await student.get("/records/summary");
     expect(summary.status).toBe(200);
-    expect(summary.body.data).toMatchObject({ streak: 1, activeDays30: 1, learnedWords: 12, mastery: { learning: 12, consolidating: 0, mastered: 0 }, dueToday: 0 });
+    expect(summary.body.data).toMatchObject({ streak: 1, activeDays30: 1, learnedWords: 12, mastery: { missed: 1, learning: 11, consolidating: 0, mastered: 0 }, dueToday: 0 });
     expect(summary.body.data.lastActiveDay).toBe(summary.body.data.day);
     expect(summary.body.data.accuracy30d.total).toBeGreaterThan(0);
     expectShape("records-summary", summary.body);
@@ -403,9 +404,11 @@ describe.runIf(ready("study", "plans"))("今日与学习组", () => {
     expect(words.body.data.items).toHaveLength(5);
     expectShape("records-words", words.body);
     expect((await student.get("/records/words?filter=due")).body.data.total).toBe(0);
-    expect((await student.get("/records/words?filter=learning")).body.data.total).toBe(12);
+    // spec 0009：新学时答错的那个词「没记住」，其余「刚记住」（learning）
+    expect((await student.get("/records/words?filter=learning")).body.data.total).toBe(11);
+    expect((await student.get("/records/words?filter=missed")).body.data.total).toBe(1);
     expect((await student.get("/records/words?filter=mastered")).body.data.total).toBe(0);
-    expect((await student.get("/records/words?filter=bad")).body.error.details).toEqual({ filter: "Invalid enum value. Expected 'all' | 'due' | 'difficult' | 'mastered' | 'consolidating' | 'learning', received 'bad'" });
+    expect((await student.get("/records/words?filter=bad")).body.error.details).toEqual({ filter: "Invalid enum value. Expected 'all' | 'due' | 'difficult' | 'mastered' | 'consolidating' | 'learning' | 'missed', received 'bad'" });
     const first = words.body.data.items[0];
     const byQ = await student.get(`/records/words?q=${encodeURIComponent(` ${first.spelling.toUpperCase()} `)}`);
     expect(byQ.body.data.items.map((w: { wordId: string }) => w.wordId)).toContain(first.wordId);

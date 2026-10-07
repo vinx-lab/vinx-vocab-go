@@ -141,8 +141,9 @@ export function SpeakButton({ text, wordId, size = "middle" }: { text: string; w
   );
 }
 
-const LEVEL_COLOR: Record<MasteryLevel, string> = { learning: "orange", consolidating: "cyan", mastered: "green" };
-const LEVEL_LABEL: Record<MasteryLevel, string> = { learning: "学习中", consolidating: "巩固中", mastered: "已掌握" };
+// 与覆盖进度的五级状态同一套颜色和名字（spec 0009）；learning 是「刚记住」
+const LEVEL_COLOR: Record<MasteryLevel, string> = { missed: "orange", learning: "blue", consolidating: "cyan", mastered: "green" };
+const LEVEL_LABEL: Record<MasteryLevel, string> = { missed: "没记住", learning: "刚记住", consolidating: "巩固中", mastered: "已掌握" };
 
 export function MasteryTag({ level }: { level: MasteryLevel }) {
   return (

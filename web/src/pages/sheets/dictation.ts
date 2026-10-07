@@ -95,7 +95,7 @@ export function splitDictation<T extends DictItemRef>(items: T[], copies: number
 
 /**
  * 生成页选好的句子来源 → 接口的 sentenceSources：用错题再出一份（from）时只用那次批改的错句；
- * 否则依次为单元的篇（可多选）、要学的句子、学生自己的一篇 AI 短文。
+ * 否则依次为单元的篇（可多选）、没记住的句子、学生自己的一篇 AI 短文。
  */
 export function sentenceSourcesOf(o: { from?: string; textIds: string[]; learning: boolean; passageId?: string }): SentenceSource[] {
   if (o.from) return [{ kind: "session", sessionId: o.from }];

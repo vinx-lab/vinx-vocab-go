@@ -990,10 +990,10 @@ type memoryRow struct {
 
 // CompleteSessionTx 结算一组（必须在事务 tx 里调用；写事务串行化，第二次完成直接返回已存结果，幂等）。
 //
-// 规则：按练习 / 检测阶段第 1 次作答推导评分（core.DeriveRating）；
+// 规则：按练习 / 检测阶段第 1 次作答推导评分（core.DeriveRating），记忆怎么动见 core.MemoryActionFor（spec 0009）：
 //   - learn 且没有记忆：建卡（封顶到下个学习日），并发结算同一新词时后到者跳过；
-//   - 其余组有记忆时更新，但检测 / 单词单重考不更新，且每个词每个学习日最多更新一次（K19 / K20）；
-//   - drill 不更新记忆。
+//   - 其余组（含错词强化、检测计划的后续组）：只有这次作答是该词当天的证据时才动记忆——有记忆就更新（每个词每个学习日最多一次，K19），
+//     没有记忆且答对就建卡（不占每日计划的新词额度），答错不建；同一张单词单的重测不动记忆。
 func CompleteSessionTx(ctx context.Context, tx store.Querier, loc *time.Location, now time.Time, userID, sessionID string) (*CompleteOutput, error) {
 	s, err := GetSession(ctx, tx, sessionID)
 	if err != nil {
@@ -1074,24 +1074,10 @@ func settleSessionTx(ctx context.Context, tx store.Querier, loc *time.Location, 
 	}
 	tomorrowStart, _ := core.DayRange(core.AddDays(day, 1), loc)
 
-	// 检测重考只算练习：同一计划（或同一张单词单）已交过卷则不再更新记忆
-	isRetake := false
-	if kind == "test" || kind == "sheet" {
-		col, val := "planId", s.PlanID
-		if kind == "sheet" {
-			col, val = "sheetId", s.SheetID
-		}
-		cond := `"` + col + `" IS NULL`
-		args := []any{userID, kind, sessionID}
-		if val != nil {
-			cond = `"` + col + `" = ?`
-			args = append(args, *val)
-		}
-		var n int
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM "StudySession" WHERE "userId" = ? AND "kind" = ? AND "status" = 'completed' AND "id" <> ? AND `+cond, args...).Scan(&n); err != nil {
-			return nil, err
-		}
-		isRetake = n > 0
+	// 当天的证据（spec 0009）：同一张单词单重测、当天更早完成的组已经答过的词，这一组都不再动记忆
+	evidenceToday, err := sessionEvidenceWords(ctx, tx, now, day, s, answers)
+	if err != nil {
+		return nil, err
 	}
 
 	ratings := map[string]int{}
@@ -1104,35 +1090,47 @@ func settleSessionTx(ctx context.Context, tx store.Querier, loc *time.Location, 
 		}
 		settled++
 		mem := memByWord[item.WordID]
+		action := core.MemoryNone
+		switch {
+		case kind == "learn":
+			// 新学建卡不看证据：当天在检测里答错过的词，新学时照样进记忆
+			action = core.MemoryActionFor(kind, mem != nil, rating)
+		case !evidenceToday[item.WordID]:
+		case mem != nil && mem.LastReview != nil && !mem.LastReview.Before(dayStart):
+			// 每个词每个学习日最多更新一次记忆（K19）
+		default:
+			action = core.MemoryActionFor(kind, mem != nil, rating)
+		}
 		applied := false
-
-		if kind == "learn" && mem == nil {
-			card := core.CapDue(core.ApplyRating(core.NewMemoryCard(now), rating, now), tomorrowStart, now)
-			// 两个计划的新学组并发结算同一新词时，后到者跳过（不回滚整组）
-			res, err := tx.ExecContext(ctx, `INSERT INTO "MemoryState" ("id","userId","wordId","due","stability","difficulty","elapsedDays","scheduledDays","learningSteps","reps","lapses","state","lastReview","introducedAt","introducedPlanId","introducedDay","updatedAt")
-				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT ("userId","wordId") DO NOTHING`,
-				store.NewID(), userID, item.WordID, store.NewTime(card.Due), card.Stability, card.Difficulty, card.ElapsedDays, card.ScheduledDays,
-				card.LearningSteps, card.Reps, card.Lapses, card.State, nullTimePtr(card.LastReview), store.NewTime(now), s.PlanID, s.DayKey, store.NewTime(now))
+		switch action {
+		case core.MemoryCreateLearn, core.MemoryCreate:
+			card := core.ApplyRating(core.NewMemoryCard(now), rating, now)
+			planID := s.PlanID
+			if action == core.MemoryCreateLearn {
+				card = core.CapDue(card, tomorrowStart, now)
+			} else {
+				planID = nil // 不占每日计划的新词额度
+			}
+			// 两个组并发结算同一新词时，后到者跳过（不回滚整组）
+			ok, err := createMemory(ctx, tx, now, s.DayKey, userID, item.WordID, planID, card)
 			if err != nil {
 				return nil, err
 			}
-			if n, _ := res.RowsAffected(); n == 1 {
-				newLearned++
+			if ok {
+				if action == core.MemoryCreateLearn {
+					newLearned++
+				}
 				applied = true
-				if err := insertReviewLog(ctx, tx, now, day, userID, item.WordID, sessionID, rating, 0, card); err != nil {
+				if err := insertReviewLog(ctx, tx, now, day, userID, item.WordID, sessionID, rating, 0, card, ""); err != nil {
 					return nil, err
 				}
 			}
-		} else if mem != nil && kind != "learn" && !isRetake && !(mem.LastReview != nil && !mem.LastReview.Before(dayStart)) {
-			// 每个词每个学习日最多更新一次记忆（多计划共享词、同日学完即测都不重复计）
+		case core.MemoryUpdate:
 			card := core.ApplyRating(mem.MemoryCard, rating, now)
-			if _, err := tx.ExecContext(ctx, `UPDATE "MemoryState" SET "due" = ?, "stability" = ?, "difficulty" = ?, "elapsedDays" = ?, "scheduledDays" = ?,
-				"learningSteps" = ?, "reps" = ?, "lapses" = ?, "state" = ?, "lastReview" = ?, "updatedAt" = ? WHERE "id" = ?`,
-				store.NewTime(card.Due), card.Stability, card.Difficulty, card.ElapsedDays, card.ScheduledDays, card.LearningSteps,
-				card.Reps, card.Lapses, card.State, nullTimePtr(card.LastReview), store.NewTime(now), mem.ID); err != nil {
+			if err := updateMemory(ctx, tx, now, mem.ID, card); err != nil {
 				return nil, err
 			}
-			if err := insertReviewLog(ctx, tx, now, day, userID, item.WordID, sessionID, rating, mem.State, card); err != nil {
+			if err := insertReviewLog(ctx, tx, now, day, userID, item.WordID, sessionID, rating, mem.State, card, ""); err != nil {
 				return nil, err
 			}
 			applied = true
@@ -1189,11 +1187,85 @@ func nullTimePtr(t *time.Time) store.NullTime {
 	return store.NewNullTime(*t)
 }
 
-func insertReviewLog(ctx context.Context, tx store.Querier, now time.Time, day, userID, wordID, sessionID string, rating core.Rating, stateBefore int, card core.MemoryCard) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO "ReviewLog" ("id","userId","wordId","sessionId","rating","stateBefore","stabilityAfter","difficultyAfter","dueAfter","reviewedAt","dayKey")
-		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-		store.NewID(), userID, wordID, sessionID, int(rating), stateBefore, card.Stability, card.Difficulty, store.NewTime(card.Due), store.NewTime(now), day)
+// insertReviewLog 写一条复习记录；source 为空表示线上结算，补算写 BackfillSource（spec 0009）。
+func insertReviewLog(ctx context.Context, tx store.Querier, now time.Time, day, userID, wordID, sessionID string, rating core.Rating, stateBefore int, card core.MemoryCard, source string) error {
+	var src any
+	if source != "" {
+		src = source
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO "ReviewLog" ("id","userId","wordId","sessionId","rating","stateBefore","stabilityAfter","difficultyAfter","dueAfter","reviewedAt","dayKey","source")
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		store.NewID(), userID, wordID, sessionID, int(rating), stateBefore, card.Stability, card.Difficulty, store.NewTime(card.Due), store.NewTime(now), day, src)
 	return err
+}
+
+// createMemory 新建记忆（introducedDay 是开组的学习日）；已有（并发结算同一个词）时不写，返回 false。
+func createMemory(ctx context.Context, tx store.Querier, now time.Time, introducedDay, userID, wordID string, planID *string, card core.MemoryCard) (bool, error) {
+	res, err := tx.ExecContext(ctx, `INSERT INTO "MemoryState" ("id","userId","wordId","due","stability","difficulty","elapsedDays","scheduledDays","learningSteps","reps","lapses","state","lastReview","introducedAt","introducedPlanId","introducedDay","updatedAt")
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT ("userId","wordId") DO NOTHING`,
+		store.NewID(), userID, wordID, store.NewTime(card.Due), card.Stability, card.Difficulty, card.ElapsedDays, card.ScheduledDays,
+		card.LearningSteps, card.Reps, card.Lapses, card.State, nullTimePtr(card.LastReview), store.NewTime(now), planID, introducedDay, store.NewTime(now))
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}
+
+// updateMemory 按新的卡片更新记忆。
+func updateMemory(ctx context.Context, tx store.Querier, now time.Time, memoryID string, card core.MemoryCard) error {
+	_, err := tx.ExecContext(ctx, `UPDATE "MemoryState" SET "due" = ?, "stability" = ?, "difficulty" = ?, "elapsedDays" = ?, "scheduledDays" = ?,
+		"learningSteps" = ?, "reps" = ?, "lapses" = ?, "state" = ?, "lastReview" = ?, "updatedAt" = ? WHERE "id" = ?`,
+		store.NewTime(card.Due), card.Stability, card.Difficulty, card.ElapsedDays, card.ScheduledDays, card.LearningSteps,
+		card.Reps, card.Lapses, card.State, nullTimePtr(card.LastReview), store.NewTime(now), memoryID)
+	return err
+}
+
+// sessionEvidenceWords 正在结算的组里，哪些词的作答是这个词当天的证据（core.BuildEvidence 同一口径）：
+// 同一张单词单再次交卷的组没有证据；当天更早完成的组已经作答过的词不算。
+func sessionEvidenceWords(ctx context.Context, tx store.Querier, now time.Time, day string, s *SessionRow, answers []answerRow) (map[string]bool, error) {
+	src, err := loadEvidenceSources(ctx, tx, []string{s.UserID}, day)
+	if err != nil {
+		return nil, err
+	}
+	today := src[s.UserID]
+	// 默写单批改时这一组已经以完成状态插入，从库里读到的要去掉，以本次的为准
+	sessions := []core.EvidenceSession{}
+	for _, x := range today.sessions {
+		if x.ID != s.ID {
+			sessions = append(sessions, x)
+		}
+	}
+	if s.Kind == "sheet" && s.SheetID != nil {
+		// 同一张单子以前（不限当天）交过卷：重测
+		var n int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM "StudySession" WHERE "userId" = ? AND "kind" = 'sheet' AND "status" = 'completed' AND "id" <> ? AND "sheetId" = ?`,
+			s.UserID, s.ID, *s.SheetID).Scan(&n); err != nil {
+			return nil, err
+		}
+		if n > 0 {
+			return map[string]bool{}, nil
+		}
+	}
+	cur := core.EvidenceSession{ID: s.ID, Kind: s.Kind, SheetID: nil, Day: day, At: now}
+	list := []core.EvidenceAnswer{}
+	for _, a := range today.answers {
+		if a.SessionID != s.ID {
+			list = append(list, a)
+		}
+	}
+	for _, a := range answers {
+		list = append(list, core.EvidenceAnswer{SessionID: s.ID, WordID: a.WordID, Mode: a.Mode, Phase: a.Phase, Attempt: a.Attempt, Correct: a.Correct, HintUsed: a.HintUsed})
+	}
+	out := map[string]bool{}
+	for w, ev := range core.BuildEvidence(append(sessions, cur), list) {
+		for _, e := range ev {
+			if e.Day == day && e.SessionID == s.ID {
+				out[w] = true
+			}
+		}
+	}
+	return out, nil
 }
 
 // loadMemories 该学生在快照词里的记忆状态。

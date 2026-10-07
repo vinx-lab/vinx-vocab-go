@@ -209,7 +209,7 @@ func ClassOverview(ctx context.Context, q store.Querier, loc *time.Location, now
 	if !allowSelf {
 		v.CoverageMode = CoverageModeClass
 	}
-	coverage, includesOwn, err := classCoverage(ctx, q, classID, v.CoverageMode, userIDs)
+	coverage, includesOwn, err := classCoverage(ctx, q, loc, now, classID, v.CoverageMode, userIDs)
 	if err != nil {
 		return nil, err
 	}

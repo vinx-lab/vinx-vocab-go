@@ -108,6 +108,10 @@ func UserSummary(ctx context.Context, q store.Querier, loc *time.Location, now t
 	if err != nil {
 		return nil, err
 	}
+	stages, err := userWordStages(ctx, q, loc, now, userID)
+	if err != nil {
+		return nil, err
+	}
 	days, err := ActiveDays(ctx, q, userID, "")
 	if err != nil {
 		return nil, err
@@ -147,7 +151,7 @@ func UserSummary(ctx context.Context, q store.Querier, loc *time.Location, now t
 	}
 	return &UserSummaryView{
 		Day: day, Streak: core.ComputeStreak(days, day), ActiveDays30: activeDays30, LastActiveDay: last,
-		LearnedWords: len(stabilities), Mastery: core.MasteryDistribution(stabilities), DueToday: dueToday,
+		LearnedWords: len(stabilities), Mastery: core.StageDistribution(stages), DueToday: dueToday,
 		Today: TodayStats{
 			NewWords: newToday, ReviewedWords: reviewed, Answers: len(answersToday), Minutes: core.ActiveMinutes(answersToday),
 			NewLeft: queue.Totals.NewLeft, ReviewLeft: queue.Totals.ReviewLeft, PendingTests: queue.Totals.PendingTests,
@@ -418,27 +422,48 @@ func SessionRecord(ctx context.Context, q store.Querier, a *Actor, sessionID str
 
 // WordListItem /records/words 的一项。
 type WordListItem struct {
-	WordID        string         `json:"wordId"`
-	Spelling      string         `json:"spelling"`
-	Phonetic      *string        `json:"phonetic"`
-	PartOfSpeech  *string        `json:"partOfSpeech"`
-	Definition    string         `json:"definition"`
-	Due           store.Time     `json:"due"`
-	IsDue         bool           `json:"isDue"`
-	Stability     float64        `json:"stability"`
-	Difficulty    float64        `json:"difficulty"`
-	Level         string         `json:"level"`
-	LevelLabel    string         `json:"levelLabel"`
+	WordID       string     `json:"wordId"`
+	Spelling     string     `json:"spelling"`
+	Phonetic     *string    `json:"phonetic"`
+	PartOfSpeech *string    `json:"partOfSpeech"`
+	Definition   string     `json:"definition"`
+	Due          store.Time `json:"due"`
+	IsDue        bool       `json:"isDue"`
+	Stability    float64    `json:"stability"`
+	Difficulty   float64    `json:"difficulty"`
+	Level        string     `json:"level"`
+	LevelLabel   string     `json:"levelLabel"`
+	// Forgetting 可能忘了（spec 0009）：已到期且回忆概率低于 70%。
+	Forgetting    bool           `json:"forgetting"`
 	Reps          int            `json:"reps"`
 	Lapses        int            `json:"lapses"`
 	LastReview    store.NullTime `json:"lastReview"`
 	IntroducedDay string         `json:"introducedDay"`
 }
 
-// WordFilters /records/words 的 filter 取值。
-var WordFilters = []string{"all", "due", "difficult", "mastered", "consolidating", "learning"}
+// WordFilters /records/words 的 filter 取值（spec 0009 新增 missed：最近一次答错）。
+var WordFilters = []string{"all", "due", "difficult", "mastered", "consolidating", "learning", "missed"}
 
-// UserWords 学过的词（旧 userWords）：按筛选与关键词分页。
+// userWordStages 一个用户有记忆的词的状态（spec 0009）。
+func userWordStages(ctx context.Context, q store.Querier, loc *time.Location, now time.Time, userID string) (map[string]core.WordStageInfo, error) {
+	ev, err := loadEvidence(ctx, q, []string{userID})
+	if err != nil {
+		return nil, err
+	}
+	mem, err := loadStageMemories(ctx, q, []string{userID})
+	if err != nil {
+		return nil, err
+	}
+	now = msTime(now)
+	_, _, dayEnd := TodayRange(loc, now)
+	out := map[string]core.WordStageInfo{}
+	for w, m := range mem[userID] {
+		out[w] = core.WordStage(ev[userID][w], m, now, dayEnd)
+	}
+	return out, nil
+}
+
+// UserWords 学过的词（旧 userWords）：按筛选与关键词分页。分层筛选按词状态（spec 0009），在内存里过滤后分页。
 func UserWords(ctx context.Context, q store.Querier, loc *time.Location, now time.Time, userID, filter, search string, page, limit int) (httpx.Paginated[WordListItem], error) {
 	_, _, dayEnd := TodayRange(loc, msTime(now))
 	where := `m."userId" = ?`
@@ -453,12 +478,6 @@ func UserWords(ctx context.Context, q store.Querier, loc *time.Location, now tim
 		args = append(args, dayEnd)
 	case "difficult":
 		where += ` AND (m."lapses" >= 2 OR m."difficulty" >= 7)`
-	case "mastered":
-		where += ` AND m."stability" >= 21`
-	case "consolidating":
-		where += ` AND m."stability" >= 7 AND m."stability" < 21`
-	case "learning":
-		where += ` AND m."stability" < 7`
 	}
 	// 同分决胜：旧版只按主排序键，PG 按 (userId, wordId) 唯一索引取行后排序，小批量同分时即 wordId 升序；
 	// 大批量同分时 PG 的次序由排序算法决定（未定义），无法复刻（见 A8 迁移演练）。
@@ -469,35 +488,47 @@ func UserWords(ctx context.Context, q store.Querier, loc *time.Location, now tim
 	case "due":
 		order = `m."due" ASC, m."wordId"`
 	}
-	from := `FROM "MemoryState" m JOIN "Word" w ON w."id" = m."wordId" WHERE ` + where
-	var total int
-	if err := q.QueryRowContext(ctx, `SELECT count(*) `+from, args...).Scan(&total); err != nil {
+	stages, err := userWordStages(ctx, q, loc, now, userID)
+	if err != nil {
 		return httpx.Paginated[WordListItem]{}, err
 	}
 	rows, err := q.QueryContext(ctx, `SELECT m."wordId", w."spelling", w."phonetic", w."partOfSpeech", w."definition", m."due", m."stability", m."difficulty",
-		m."reps", m."lapses", m."lastReview", m."introducedDay" `+from+` ORDER BY `+order+` LIMIT ? OFFSET ?`, append(args, limit, (page-1)*limit)...)
+		m."reps", m."lapses", m."lastReview", m."introducedDay" FROM "MemoryState" m JOIN "Word" w ON w."id" = m."wordId" WHERE `+where+` ORDER BY `+order, args...)
 	if err != nil {
 		return httpx.Paginated[WordListItem]{}, err
 	}
 	defer rows.Close()
-	items := []WordListItem{}
+	all := []WordListItem{}
 	for rows.Next() {
 		var it WordListItem
 		if err := rows.Scan(&it.WordID, &it.Spelling, &it.Phonetic, &it.PartOfSpeech, &it.Definition, &it.Due, &it.Stability, &it.Difficulty,
 			&it.Reps, &it.Lapses, &it.LastReview, &it.IntroducedDay); err != nil {
 			return httpx.Paginated[WordListItem]{}, err
 		}
+		st := stages[it.WordID]
+		it.Level = core.StageLevel(st.Stage)
+		if it.Level == "" || it.Level == core.StageUntested {
+			it.Level = core.MasteryLevel(it.Stability)
+		}
+		switch filter {
+		case "mastered", "consolidating", "learning", "missed":
+			if it.Level != filter {
+				continue
+			}
+		}
 		it.IsDue = it.Due.Time.Before(dayEnd)
-		it.Level = core.MasteryLevel(it.Stability)
+		it.Forgetting = st.Forgetting
 		it.LevelLabel = core.MasteryLabel[it.Level]
 		it.Stability = core.Round1(it.Stability)
 		it.Difficulty = core.Round1(it.Difficulty)
-		items = append(items, it)
+		all = append(all, it)
 	}
 	if err := rows.Err(); err != nil {
 		return httpx.Paginated[WordListItem]{}, err
 	}
-	return httpx.Page(items, total, page, limit), nil
+	from := min((page-1)*limit, len(all))
+	to := min(from+limit, len(all))
+	return httpx.Page(all[from:to], len(all), page, limit), nil
 }
 
 // MemoryView MemoryState 全部列 + 分层（/records/words/:wordId 的 memory）。
@@ -536,6 +567,8 @@ type ReviewLogRow struct {
 	DueAfter        store.Time `json:"dueAfter"`
 	ReviewedAt      store.Time `json:"reviewedAt"`
 	DayKey          string     `json:"dayKey"`
+	// Source 来源：null 为线上结算，"backfill-0009" 为历史补算（spec 0009）。
+	Source *string `json:"source"`
 }
 
 // WordHistoryAnswer 单词历史里的一次作答。
@@ -562,7 +595,7 @@ type WordHistoryView struct {
 }
 
 // UserWordHistory 单词学习历史（旧 userWordHistory）。
-func UserWordHistory(ctx context.Context, q store.Querier, userID, wordID string) (*WordHistoryView, error) {
+func UserWordHistory(ctx context.Context, q store.Querier, loc *time.Location, now time.Time, userID, wordID string) (*WordHistoryView, error) {
 	word, err := GetWordRow(ctx, q, wordID)
 	if err != nil {
 		return nil, err
@@ -573,7 +606,14 @@ func UserWordHistory(ctx context.Context, q store.Querier, userID, wordID string
 		FROM "MemoryState" WHERE "userId" = ? AND "wordId" = ?`, userID, wordID).
 		Scan(&m.ID, &m.UserID, &m.WordID, &m.Due, &m.Stability, &m.Difficulty, &m.ElapsedDays, &m.ScheduledDays, &m.LearningSteps, &m.Reps, &m.Lapses, &m.State, &m.LastReview, &m.IntroducedAt, &m.IntroducedPlanID, &m.IntroducedDay, &m.UpdatedAt)
 	if err == nil {
-		m.Level = core.MasteryLevel(m.Stability)
+		stages, err := userWordStages(ctx, q, loc, now, userID)
+		if err != nil {
+			return nil, err
+		}
+		m.Level = core.StageLevel(stages[wordID].Stage)
+		if m.Level == "" || m.Level == core.StageUntested {
+			m.Level = core.MasteryLevel(m.Stability)
+		}
 		m.LevelLabel = core.MasteryLabel[m.Level]
 		m.Stability = core.Round1(m.Stability)
 		m.Difficulty = core.Round1(m.Difficulty)
@@ -581,7 +621,7 @@ func UserWordHistory(ctx context.Context, q store.Querier, userID, wordID string
 	} else if !store.IsNoRows(err) {
 		return nil, err
 	}
-	rows, err := q.QueryContext(ctx, `SELECT "id","userId","wordId","sessionId","rating","stateBefore","stabilityAfter","difficultyAfter","dueAfter","reviewedAt","dayKey"
+	rows, err := q.QueryContext(ctx, `SELECT "id","userId","wordId","sessionId","rating","stateBefore","stabilityAfter","difficultyAfter","dueAfter","reviewedAt","dayKey","source"
 		FROM "ReviewLog" WHERE "userId" = ? AND "wordId" = ? ORDER BY "reviewedAt", rowid`, userID, wordID)
 	if err != nil {
 		return nil, err
@@ -589,7 +629,7 @@ func UserWordHistory(ctx context.Context, q store.Querier, userID, wordID string
 	logs := []ReviewLogRow{}
 	for rows.Next() {
 		var r ReviewLogRow
-		if err := rows.Scan(&r.ID, &r.UserID, &r.WordID, &r.SessionID, &r.Rating, &r.StateBefore, &r.StabilityAfter, &r.DifficultyAfter, &r.DueAfter, &r.ReviewedAt, &r.DayKey); err != nil {
+		if err := rows.Scan(&r.ID, &r.UserID, &r.WordID, &r.SessionID, &r.Rating, &r.StateBefore, &r.StabilityAfter, &r.DifficultyAfter, &r.DueAfter, &r.ReviewedAt, &r.DayKey, &r.Source); err != nil {
 			rows.Close()
 			return nil, err
 		}
