@@ -1,6 +1,6 @@
 # Vinx Vocab 产品说明
 
-本文描述产品现在是什么样。决定的理由见 [decisions.md](decisions.md)，模块落位见 [architecture.md](architecture.md)，运行和部署见 [README](../README.md) 与 [deployment.md](deployment.md)。
+本文描述产品现在是什么样。决定的理由见 [decisions.md](decisions.md)，模块落位见 [architecture.md](architecture.md)，运行和部署见 [README](../README.md) 与 [deployment.md](deployment.md)。面向用户和推广的功能与流程介绍见 [features.md](features.md)。
 
 单文件版与服务器版功能一致；版本向导与双向切换（K43）、首个账号为管理员（K44）是单文件版新增的规则。
 

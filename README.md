@@ -8,6 +8,8 @@
 
 老师带班或学生自学，按学习计划每天实时生成「今日」队列；学习流为 认识 → 练习 → 巩固错词，记忆排程用 FSRS。产品规则见 [docs/decisions.md](docs/decisions.md)。
 
+**功能与使用流程**（面向推广、演示和新用户）见 [docs/features.md](docs/features.md)。
+
 ## 快速开始（Windows）
 
 1. 把 `vinx-vocab.exe` 放进一个**自己的文件夹**（例如 `D:\VinxVocab\`）。不要在压缩包里直接双击运行，也不要放进 `C:\Program Files\`：数据默认存在程序旁边的 `vinx-data\`，放在这些位置会写不进去或落进临时目录。
