@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- `make release` 发版：从 git 标签算出下一个版本号，改 CHANGELOG、检查、提交、打标签、构建；推送标签由 GitHub Actions 构建 Windows / Linux 包并发布 Release；`main` 上加 CI。
+
 ## [3.1.0] - 2026-10-07
 
 单文件版的第一个正式版本：Go + SQLite + 嵌入前端，一个可执行文件跑完整应用，功能与服务器版（Node + PostgreSQL）一致，服务器版数据可完整导入。功能与使用流程见 [docs/features.md](https://github.com/vinx-lab/vinx-vocab-go/blob/v3.1.0/docs/features.md)。

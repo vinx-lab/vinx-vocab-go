@@ -65,7 +65,12 @@
 
 - Conventional Commits：`feat:` / `fix:` / `chore:` / `docs:` / `refactor:`，可用中文说明。
 - **版本号**：语义化版本，只修 bug 升修订号、新增功能升次版本号、不兼容升主版本号；首个版本为 `v3.1.0`。版本号只来自 git 标签 `vX.Y.Z`，代码里不写死：`make build` / `make cross` 用 `git describe` 注入 `main.version`，标签之后的提交显示为 `v3.1.0-2-g<哈希>`，有未提交改动带 `-dirty`。页面右上角用户菜单和登录页显示版本，部署后据此确认是否已更新。
-- 发版：先在 [CHANGELOG.md](../CHANGELOG.md) 把 `[Unreleased]` 改为 `[x.y.z] - 日期`（按「新增 / 修复」分组，链接写完整 URL），提交后打标签 `git tag -a vX.Y.Z -m "Vinx Vocab X.Y.Z"`，再构建。
+- **发版**用 `make release`（`scripts/release.sh`），只在本地做，不推送：
+  1. 平时改动随手在 [CHANGELOG.md](../CHANGELOG.md) 的 `[Unreleased]` 下按「新增 / 修复」记一条，链接写完整 URL（会原样用作 Release 说明）。
+  2. `make release DRY=1` 预览：从已有标签算出下一个版本号，显示 CHANGELOG 将怎么改。
+  3. `make release`：修订号 +1；有「新增」时用 `Y=1` 升次版本号（修订号归零），不兼容用 `X=1`，也可 `NEW=x.y.z` 指定。脚本要求在 `main`、工作区干净、`[Unreleased]` 不为空，然后改 CHANGELOG、跑 `make vet test` 与前端单测、提交 `chore: 发布 x.y.z`、打标签 `vX.Y.Z`、`make cross`，并核对程序版本号。
+  4. 每发一个包修订号就 +1，不复用、不跳号；发出去的包有问题就发下一个修订版，不改已有标签。
+- **公开**：标签先留在本地，用这个版本部署试运行，稳定后再 `git push origin main vX.Y.Z`。推送标签触发 `.github/workflows/release.yml`，构建 Windows / Linux 包并用 CHANGELOG 对应一节建 GitHub Release；标签指向的提交里必须已有这个工作流。`main` 的推送和 PR 跑 `.github/workflows/ci.yml`（vet、单测、前端类型检查与单测、构建）。
 
 ## 9. 文档
 

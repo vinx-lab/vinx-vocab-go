@@ -7,6 +7,7 @@
 # make winres     生成 Windows 资源（图标、版本信息）cmd/vinx-vocab/rsrc_windows_amd64.syso（go-winres，只在 windows 构建时链接）
 # make e2e        起 Go 单文件（端口 E2E_PORT / E2E_FRESH_PORT）跑 e2e/ 下的 Playwright 用例
 # make contract   契约测试（CONTRACT_BASE_URL 默认 Go 本机验收端口）
+# make release    发版：修订号 +1（Y=1 升次版本号，X=1 升主版本号，NEW=x.y.z 指定，DRY=1 只预览），改 CHANGELOG、检查、提交、打标签、构建，不推送
 
 # 本机私有的 Go 环境（工具链、模块缓存、代理）写在 local.mk，不入库；没有时用 PATH 里的 go 与默认环境
 -include local.mk
@@ -21,7 +22,7 @@ CONTRACT_BASE_URL ?= http://localhost:3200/api
 
 export CGO_ENABLED = 0
 
-.PHONY: test test-import vet build build-web build-go cross winres e2e contract clean
+.PHONY: test test-import vet build build-web build-go cross winres e2e contract release clean
 
 test:
 	$(GO) test ./...
@@ -63,6 +64,9 @@ e2e: build
 
 contract:
 	BASE_URL=$(CONTRACT_BASE_URL) pnpm -C contract test
+
+release:
+	bash scripts/release.sh
 
 clean:
 	rm -rf dist

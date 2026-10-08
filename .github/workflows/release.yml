@@ -1,0 +1,99 @@
+# 推送 v* 标签时：检查 → 构建前端并交叉编译（make cross，Windows exe 带图标与版本信息）→ 打包 → 创建 GitHub Release。
+# 标签由本地 make release 打（见 docs/development.md）；标签指向的提交里要有本文件，否则推送标签不会触发。
+# 发布说明取 CHANGELOG.md 里「## [版本号]」那一节；同名 Release 已存在时只覆盖附件。
+# 手动运行（Actions 页面 Run workflow）只检查、编译和打包，产物保留 1 天，不创建 Release。
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  APP: vinx-vocab
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: 确定版本号
+        id: version
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            tag="v0.0.0-dev.${GITHUB_SHA::7}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: 检查
+        run: |
+          pnpm -C web install --frozen-lockfile
+          go vet ./...
+          go test -count=1 ./...
+          pnpm -C web exec tsc --noEmit
+          pnpm -C web exec vitest run
+
+      # 版本号显式传入：浅克隆里 git describe 取不到标签
+      - name: 编译与打包
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          make cross VERSION="$TAG"
+          test "$(./dist/$APP version)" = "$APP $TAG"
+          cd dist
+          zip -q "$APP-windows-amd64.zip" "$APP.exe"
+          tar czf "$APP-linux-amd64.tar.gz" "$APP"
+          sha256sum *.zip *.tar.gz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: 保留构建产物（手动运行时）
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP }}-${{ steps.version.outputs.version }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/SHA256SUMS.txt
+          retention-days: 1
+
+      - name: 创建 Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          assets=(dist/*.zip dist/*.tar.gz dist/SHA256SUMS.txt)
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
+            exit 0
+          fi
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { found = 1; next }
+            found && /^## / { exit }
+            found && /^\[[^]]+\]: / { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [[ -s notes.md ]]; then
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" --title "Vinx Vocab $VERSION" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" --title "Vinx Vocab $VERSION" --generate-notes
+          fi

@@ -1,0 +1,40 @@
+# main 分支推送和 PR：Go vet / 单测，前端类型检查与单测，再完整构建一次。
+# 契约测试和 E2E 要起服务实例，不在这里跑（见 contract/、e2e/）。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test -count=1 ./...
+      - name: 前端类型检查与单测
+        run: |
+          pnpm -C web install --frozen-lockfile
+          pnpm -C web exec tsc --noEmit
+          pnpm -C web exec vitest run
+      - name: 构建
+        run: make build
